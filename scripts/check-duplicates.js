@@ -1,8 +1,8 @@
+// File: scripts/check-duplicates.js
 import { Octokit } from "@octokit/rest";
 import fetch from "node-fetch";
 
 const octokit = new Octokit({ auth: process.env.GITHUB_TOKEN });
-
 const OWNER = process.env.GITHUB_REPOSITORY.split("/")[0];
 const REPO = process.env.GITHUB_REPOSITORY.split("/")[1];
 const ISSUE_NUMBER = process.env.ISSUE_NUMBER;
@@ -19,20 +19,25 @@ function cosineSim(A, B) {
   return dot / (Math.sqrt(normA) * Math.sqrt(normB));
 }
 
-async function embedText(text) {
+// Get semantic representation using Gemini generateContent
+async function getGeminiRepresentation(text) {
   const response = await fetch(
-    "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:embedText",
+    "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent",
     {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         "X-goog-api-key": GEMINI_API_KEY,
       },
-      body: JSON.stringify({ input: text }),
+      body: JSON.stringify({
+        contents: [
+          { parts: [{ text }] }
+        ]
+      }),
     }
   );
   const data = await response.json();
-  return data?.embedding?.value || [];
+  return data.candidates?.[0]?.content || "";
 }
 
 async function run() {
@@ -43,7 +48,7 @@ async function run() {
   });
 
   const newText = `${newIssue.title} ${newIssue.body || ""}`;
-  const newEmbedding = await embedText(newText);
+  const newRepresentation = await getGeminiRepresentation(newText);
 
   let allIssues = [];
   let page = 1;
@@ -64,39 +69,28 @@ async function run() {
   for (const issue of allIssues) {
     if (issue.number === ISSUE_NUMBER) continue;
     const otherText = `${issue.title} ${issue.body || ""}`;
-    const otherEmbedding = await embedText(otherText);
-    const similarity = cosineSim(newEmbedding, otherEmbedding);
-    if (similarity > THRESHOLD) {
-      duplicates.push({ number: issue.number, similarity });
-    }
+    const otherRepresentation = await getGeminiRepresentation(otherText);
+
+    // Convert string to char vector for simple similarity
+    const sim = cosineSim(
+      Array.from(newRepresentation).map(c => c.charCodeAt(0)),
+      Array.from(otherRepresentation).map(c => c.charCodeAt(0))
+    );
+
+    if (sim > THRESHOLD) duplicates.push({ number: issue.number, similarity: sim });
   }
 
   if (duplicates.length > 0) {
     let body = "⚠️ This issue looks similar to the following:\n\n";
-    duplicates.forEach((d) => {
-      body += `- #${d.number} (similarity: ${d.similarity.toFixed(2)})\n`;
-    });
+    duplicates.forEach(d => { body += `- #${d.number} (similarity: ${d.similarity.toFixed(2)})\n`; });
 
-    await octokit.issues.createComment({
-      owner: OWNER,
-      repo: REPO,
-      issue_number: ISSUE_NUMBER,
-      body,
-    });
+    await octokit.issues.createComment({ owner: OWNER, repo: REPO, issue_number: ISSUE_NUMBER, body });
 
-    const existingLabels = newIssue.labels.map((l) => l.name);
+    const existingLabels = newIssue.labels.map(l => l.name);
     if (!existingLabels.includes("duplicate?")) {
-      await octokit.issues.addLabels({
-        owner: OWNER,
-        repo: REPO,
-        issue_number: ISSUE_NUMBER,
-        labels: ["duplicate?"],
-      });
+      await octokit.issues.addLabels({ owner: OWNER, repo: REPO, issue_number: ISSUE_NUMBER, labels: ["duplicate?"] });
     }
   }
 }
 
-run().catch((err) => {
-  console.error(err);
-  process.exit(1);
-});
+run().catch(err => { console.error(err); process.exit(1); });

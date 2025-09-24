@@ -4,28 +4,27 @@ on:
   issues:
     types: [opened, edited]
 
+permissions:
+  issues: write
+
 jobs:
   check-duplicates:
     runs-on: ubuntu-latest
     env:
-      SIMILARITY_THRESHOLD: 0.85  # default, can override in workflow_dispatch
+      SIMILARITY_THRESHOLD: 0.85
 
     steps:
-      # Step 1: Checkout repository
       - name: Checkout repository
         uses: actions/checkout@v3
 
-      # Step 2: Setup Node.js
       - name: Setup Node.js
         uses: actions/setup-node@v3
         with:
           node-version: 20
 
-      # Step 3: Install dependencies
       - name: Install dependencies
         run: npm install
 
-      # Step 4: Run duplicate check script
       - name: Run duplicate check
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
