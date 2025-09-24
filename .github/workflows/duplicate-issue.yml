@@ -1,0 +1,35 @@
+name: Duplicate Issue Check
+
+on:
+  issues:
+    types: [opened, edited]
+
+jobs:
+  check-duplicates:
+    runs-on: ubuntu-latest
+    env:
+      SIMILARITY_THRESHOLD: 0.85  # default, can override in workflow_dispatch
+
+    steps:
+      # Step 1: Checkout repository
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      # Step 2: Setup Node.js
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: 20
+
+      # Step 3: Install dependencies
+      - name: Install dependencies
+        run: npm install
+
+      # Step 4: Run duplicate check script
+      - name: Run duplicate check
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: node scripts/check-duplicates.js
