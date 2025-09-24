@@ -10,34 +10,29 @@ const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 const THRESHOLD_DUPLICATE = parseFloat(process.env.SIMILARITY_THRESHOLD || "0.85");
 const THRESHOLD_LOOKS_LIKE = 0.5;
 
-// Simple cosine similarity using char codes
-function cosineSim(A, B) {
-  let dot = 0, normA = 0, normB = 0;
-  for (let i = 0; i < A.length; i++) {
-    dot += A[i] * B[i];
-    normA += A[i] * A[i];
-    normB += B[i] * B[i];
-  }
-  return dot / (Math.sqrt(normA) * Math.sqrt(normB));
+// Cosine similarity for numeric arrays
+function cosineSim(vecA, vecB) {
+  const dot = vecA.reduce((sum, a, i) => sum + a * vecB[i], 0);
+  const magA = Math.sqrt(vecA.reduce((sum, a) => sum + a * a, 0));
+  const magB = Math.sqrt(vecB.reduce((sum, b) => sum + b * b, 0));
+  return dot / (magA * magB);
 }
 
-// Get Gemini embedding for text
-async function getGeminiRepresentation(text) {
+// Get Gemini numeric embeddings
+async function getGeminiEmbedding(text) {
   const response = await fetch(
-    "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent",
+    "https://generativelanguage.googleapis.com/v1beta/models/textembedding-gecko-001:embedText",
     {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         "X-goog-api-key": GEMINI_API_KEY,
       },
-      body: JSON.stringify({
-        contents: [{ parts: [{ text }] }]
-      }),
+      body: JSON.stringify({ input: text }),
     }
   );
   const data = await response.json();
-  return data.candidates?.[0]?.content || "";
+  return data.embedding; // numeric array
 }
 
 async function run() {
@@ -52,7 +47,7 @@ async function run() {
 
   const newText = `${newIssue.title} ${newIssue.body || ""}`;
   console.log("Fetching embedding for new issue...");
-  const newRepresentation = await getGeminiRepresentation(newText);
+  const newEmbedding = await getGeminiEmbedding(newText);
   console.log("Fetched embedding for new issue.\n");
 
   // Fetch all open issues
@@ -72,22 +67,17 @@ async function run() {
   }
   console.log(`Total issues to compare: ${allIssues.length}\n`);
 
-  let duplicates = [];
-  let looksLike = [];
+  const duplicates = [];
+  const looksLike = [];
 
-  // Compare each issue sequentially
   for (const issue of allIssues) {
     if (issue.number === ISSUE_NUMBER) continue;
 
     console.log(`Fetching embedding for issue #${issue.number}...`);
-    const otherRepresentation = await getGeminiRepresentation(`${issue.title} ${issue.body || ""}`);
+    const otherEmbedding = await getGeminiEmbedding(`${issue.title} ${issue.body || ""}`);
     console.log(`Fetched embedding for #${issue.number}`);
 
-    const sim = cosineSim(
-      Array.from(newRepresentation).map(c => c.charCodeAt(0)),
-      Array.from(otherRepresentation).map(c => c.charCodeAt(0))
-    );
-
+    const sim = cosineSim(newEmbedding, otherEmbedding);
     console.log(`Similarity with #${issue.number}: ${sim.toFixed(2)}`);
 
     if (sim >= THRESHOLD_DUPLICATE) duplicates.push({ number: issue.number, similarity: sim });
@@ -107,7 +97,6 @@ async function run() {
     looksLike.forEach(d => { commentBody += `- #${d.number} (similarity: ${d.similarity.toFixed(2)})\n`; });
   }
 
-  // Temporary debug: always post comment to see results in Actions
   commentBody = commentBody || `Debug: ${duplicates.length} duplicates, ${looksLike.length} looks-like issues`;
 
   if (commentBody) {
