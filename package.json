@@ -1,6 +1,7 @@
 {
   "name": "seroski-dupbot",
   "version": "1.0.0",
+  "type": "module",
   "description": "Seroski-DupBot automatically detects duplicate GitHub issues using AI-powered semantic similarity. It helps maintainers flag similar issues and keep their repositories organized effortlessly.",
   "main": "index.js",
   "scripts": {
@@ -13,7 +14,6 @@
   "keywords": [],
   "author": "",
   "license": "ISC",
-  "type": "commonjs",
   "bugs": {
     "url": "https://github.com/seroski-ai/seroski-dupbot/issues"
   },
