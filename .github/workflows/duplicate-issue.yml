@@ -12,7 +12,6 @@ jobs:
     runs-on: ubuntu-latest
     env:
       SIMILARITY_THRESHOLD: 0.85
-      THRESHOLD_LOOKS_LIKE: 0.5
 
     steps:
       - name: Checkout repository
@@ -32,13 +31,7 @@ jobs:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           ISSUE_NUMBER: ${{ github.event.issue.number }}
           GITHUB_REPOSITORY: ${{ github.repository }}
-        run: |
-          n=0
-          until [ $n -ge 2 ]
-          do
-            echo "Attempt $((n+1)) to run duplicate check..."
-            node scripts/check-duplicates.js && break
-            n=$((n+1))
-            echo "Retrying duplicate check..."
-            sleep 2
-          done
+          PINECONE_API_KEY: ${{ secrets.PINECONE_API_KEY }}
+          PINECONE_ENVIRONMENT: ${{ secrets.PINECONE_ENVIRONMENT }}
+          PINECONE_INDEX: ${{ secrets.PINECONE_INDEX }}
+        run: node scripts/check-duplicates.js
