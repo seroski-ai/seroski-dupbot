@@ -9,7 +9,7 @@ const octokit = new Octokit({ auth: process.env.GITHUB_TOKEN });
 const OWNER = process.env.GITHUB_REPOSITORY.split("/")[0];
 const REPO = process.env.GITHUB_REPOSITORY.split("/")[1];
 const ISSUE_NUMBER = Number(process.env.ISSUE_NUMBER);
-const SIMILARITY_THRESHOLD = parseFloat(process.env.SIMILARITY_THRESHOLD || "0.85");
+const SIMILARITY_THRESHOLD = parseFloat(process.env.SIMILARITY_THRESHOLD || "0.5"); // 50% similarity threshold
 
 // Initialize Pinecone client
 const pinecone = new Pinecone({
@@ -125,20 +125,81 @@ async function run() {
 
   await initVectorStore();
 
+  // Generate embedding for the new issue
+  console.log("Generating embedding for the new issue...");
+  const embeddings = {
+    embedQuery: async (text) => {
+      const response = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/text-embedding-004:embedContent?key=${process.env.GEMINI_API_KEY}`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ 
+            model: "models/text-embedding-004",
+            content: { parts: [{ text: text }] }
+          }),
+        }
+      );
+      const data = await response.json();
+      
+      if (data.error || !data.embedding || !data.embedding.values) {
+        console.error("Embedding error:", data.error || "Invalid response");
+        return Array(1024).fill(0.01);
+      }
+      
+      let embedding = data.embedding.values;
+      if (embedding.length < 1024) {
+        embedding = [...embedding, ...Array(1024 - embedding.length).fill(0)];
+      } else if (embedding.length > 1024) {
+        embedding = embedding.slice(0, 1024);
+      }
+      
+      return embedding;
+    }
+  };
+
+  const newEmbedding = await embeddings.embedQuery(newText);
+  console.log("✅ Generated embedding for new issue");
+
+  // Use Pinecone native query for better similarity scores
   console.log("Querying Pinecone for similar issues...");
-  const results = await vectorStore.similaritySearch(newText, 5); // top 5 similar issues
-  
+  const index = pinecone.Index(indexName);
+  const queryResponse = await index.query({
+    vector: newEmbedding,
+    topK: 10,
+    includeValues: false,
+    includeMetadata: true,
+  });
+
+  const results = queryResponse.matches || [];
   console.log(`Found ${results.length} potential matches`);
 
-  const duplicates = results
-    .filter(r => r.score >= SIMILARITY_THRESHOLD)
+  // Filter out the current issue being processed (in case of edits)
+  const filteredResults = results.filter(r => 
+    r.metadata?.issue_number !== ISSUE_NUMBER
+  );
+
+  console.log(`After filtering out current issue: ${filteredResults.length} matches`);
+
+  // Pinecone returns similarity scores (higher = more similar)
+  const duplicates = filteredResults
+    .filter(r => r.score >= SIMILARITY_THRESHOLD) // Use score directly from Pinecone
     .map(r => ({ 
-      number: r.metadata.issue_number, 
+      number: r.metadata?.issue_number || 'Unknown', 
       similarity: r.score,
-      title: r.metadata.title || 'Unknown'
+      title: r.metadata?.title || 'Unknown'
     }));
 
   console.log(`Found ${duplicates.length} duplicates above threshold (${SIMILARITY_THRESHOLD})`);
+  
+  // Debug: Show all scores
+  filteredResults.forEach((result, index) => {
+    const score = result.score || 0;
+    console.log(`  ${index + 1}. Issue #${result.metadata?.issue_number || 'Unknown'} - Score: ${score.toFixed(4)} ${score >= SIMILARITY_THRESHOLD ? '🚨 DUPLICATE' : '✅ Below threshold'}`);
+    console.log(`     Title: "${result.metadata?.title || 'No title'}"`);
+  });
 
   // Comment based on duplicate findings
   let commentBody = '';
@@ -152,7 +213,8 @@ async function run() {
     
     duplicates.forEach(dup => {
       const similarityPercent = (dup.similarity * 100).toFixed(1);
-      commentBody += `- Issue #${dup.number} (${similarityPercent}% similar)\n`;
+      commentBody += `- Issue #${dup.number}: "${dup.title}" (${similarityPercent}% similar)\n`;
+      commentBody += `  Link: https://github.com/${OWNER}/${REPO}/issues/${dup.number}\n\n`;
     });
     
     commentBody += `\nPlease check if your issue is already covered by the above issue(s). If your issue is different, please provide more specific details to help us distinguish it.\n\n`;
@@ -181,15 +243,21 @@ async function run() {
   // Only add to vector store if no duplicates were found
   if (shouldAddToVector) {
     console.log("Adding new issue embedding to Pinecone...");
-    await vectorStore.addDocuments([{ 
-      pageContent: newText, 
-      metadata: { 
+    
+    // Use native Pinecone upsert instead of LangChain
+    const vectorId = `issue-${ISSUE_NUMBER}-${Date.now()}`;
+    await index.upsert([{
+      id: vectorId,
+      values: newEmbedding,
+      metadata: {
         issue_number: ISSUE_NUMBER,
         title: newIssue.title,
+        content: newText,
         created_at: newIssue.created_at,
         url: newIssue.html_url
-      } 
+      }
     }]);
+    
     console.log("✅ New issue embedding stored in Pinecone for future duplicate detection.");
   } else {
     console.log("⏭️  Skipped adding to Pinecone due to duplicate detection.");

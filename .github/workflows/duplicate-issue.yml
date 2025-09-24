@@ -11,7 +11,7 @@ jobs:
   check-duplicates:
     runs-on: ubuntu-latest
     env:
-      SIMILARITY_THRESHOLD: 0.85
+      SIMILARITY_THRESHOLD: 0.5
 
     steps:
       - name: Checkout repository
