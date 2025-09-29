@@ -15,7 +15,6 @@ const pinecone = new Pinecone({
 });
 
 const indexName = process.env.PINECONE_INDEX;
-let vectorStore;
 
 async function initVectorStore() {
   // Gemini embedding wrapper
@@ -38,21 +37,19 @@ async function initVectorStore() {
       
       if (data.error) {
         console.error("Gemini API Error:", data.error);
-        return Array(1024).fill(0.01); // Match index dimension
+        return Array(1024).fill(0.01);
       }
       
       if (!data.embedding || !data.embedding.values) {
         console.error("Invalid embedding response:", data);
-        return Array(1024).fill(0.01); // Match index dimension
+        return Array(1024).fill(0.01);
       }
       
       // Pad or truncate to match Pinecone index dimension (1024)
       let embedding = data.embedding.values;
       if (embedding.length < 1024) {
-        // Pad with zeros if too short
         embedding = [...embedding, ...Array(1024 - embedding.length).fill(0)];
       } else if (embedding.length > 1024) {
-        // Truncate if too long
         embedding = embedding.slice(0, 1024);
       }
       
@@ -61,7 +58,6 @@ async function initVectorStore() {
     embedDocuments: async (documents) => {
       const embeddings = [];
       for (const doc of documents) {
-        // Call the embedQuery function directly instead of using 'this'
         const response = await fetch(
           `https://generativelanguage.googleapis.com/v1beta/models/text-embedding-004:embedContent?key=${process.env.GEMINI_API_KEY}`,
           {
@@ -222,8 +218,9 @@ async function run() {
   } else {
     // No similar issues found - safe to add to Pinecone
     shouldAddToVector = true;
-    commentBody = `✅ **No Duplicate Issues Found** ✅\n\n`;
-    commentBody += `This appears to be a unique issue. Thank you for your contribution!\n\n`;
+    commentBody = `✅ **Unique Issue Detected** ✅\n\n`;
+    commentBody += `Thank you for finding and contributing this unique issue! This appears to be a new problem that hasn't been reported before.\n\n`;
+    commentBody += `Your contribution helps make this project better. We appreciate you taking the time to report this! 🙏\n\n`;
     commentBody += `*This comment was generated automatically by Seroski-DupBot 🤖*`;
     
     console.log(`✅ No duplicates found. Will add issue #${ISSUE_NUMBER} to vector store.`);
