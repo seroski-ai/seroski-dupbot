@@ -1,14 +1,15 @@
-name: Duplicate Issue Check
+name: Duplicate Issue Management
 
 on:
   issues:
-    types: [opened, edited]
+    types: [opened, edited, closed, reopened]
 
 permissions:
   issues: write
 
 jobs:
   check-duplicates:
+    if: github.event.action == 'opened' || github.event.action == 'edited' || github.event.action == 'reopened'
     runs-on: ubuntu-latest
     env:
       SIMILARITY_THRESHOLD: 0.5
@@ -35,3 +36,29 @@ jobs:
           PINECONE_ENVIRONMENT: ${{ secrets.PINECONE_ENVIRONMENT }}
           PINECONE_INDEX: ${{ secrets.PINECONE_INDEX }}
         run: node scripts/check-duplicates.js
+
+  cleanup-closed-issue:
+    if: github.event.action == 'closed'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: 20
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Remove closed issue from vector database
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          PINECONE_API_KEY: ${{ secrets.PINECONE_API_KEY }}
+          PINECONE_ENVIRONMENT: ${{ secrets.PINECONE_ENVIRONMENT }}
+          PINECONE_INDEX: ${{ secrets.PINECONE_INDEX }}
+        run: node scripts/cleanup-closed-issue.js

@@ -5,21 +5,29 @@
   "description": "Seroski-DupBot automatically detects duplicate GitHub issues using AI-powered semantic similarity. It helps maintainers flag similar issues and keep their repositories organized effortlessly.",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "populate-issues": "node scripts/populate-existing-issues.js",
+    "cleanup-issue": "node scripts/cleanup-closed-issue.js"
   },
   "repository": {
     "type": "git",
     "url": "git+https://github.com/seroski-ai/seroski-dupbot.git"
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
+  "keywords": [
+    "github",
+    "issues",
+    "duplicate-detection",
+    "ai",
+    "automation",
+    "semantic-similarity"
+  ],
+  "author": "Seroski AI",
+  "license": "MIT",
   "bugs": {
     "url": "https://github.com/seroski-ai/seroski-dupbot/issues"
   },
   "homepage": "https://github.com/seroski-ai/seroski-dupbot#readme",
   "dependencies": {
-    "@langchain/pinecone": "^0.0.8",
     "@octokit/rest": "^22.0.0",
     "@pinecone-database/pinecone": "^6.1.2",
     "dotenv": "^17.2.2",
