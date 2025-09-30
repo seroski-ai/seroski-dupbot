@@ -6,7 +6,7 @@ const octokit = new Octokit({ auth: process.env.GITHUB_TOKEN });
 const OWNER = process.env.GITHUB_REPOSITORY.split("/")[0];
 const REPO = process.env.GITHUB_REPOSITORY.split("/")[1];
 const ISSUE_NUMBER = Number(process.env.ISSUE_NUMBER);
-const SIMILARITY_THRESHOLD = parseFloat(process.env.SIMILARITY_THRESHOLD || "0.5"); // 50% similarity threshold
+const SIMILARITY_THRESHOLD = parseFloat(process.env.SIMILARITY_THRESHOLD || "0.5");
 
 // Initialize Pinecone client
 const pinecone = new Pinecone({
@@ -25,9 +25,9 @@ async function retryApiCall(apiCall, maxRetries = 3, delay = 1000) {
       if (error.status === 429 || error.status >= 500) {
         console.log(`API call failed (attempt ${i + 1}), retrying in ${delay}ms...`);
         await new Promise(resolve => setTimeout(resolve, delay));
-        delay *= 2; // Exponential backoff
+        delay *= 2;
       } else {
-        throw error; // Don't retry for other errors
+        throw error;
       }
     }
   }
@@ -40,7 +40,6 @@ async function safeVectorOperation(operation, fallbackMessage) {
   } catch (error) {
     console.error("❌ Vector database error:", error.message);
     
-    // Post a fallback comment
     await octokit.issues.createComment({
       owner: OWNER,
       repo: REPO,
@@ -53,21 +52,13 @@ async function safeVectorOperation(operation, fallbackMessage) {
             `*This comment was generated automatically by Seroski-DupBot 🤖*`,
     });
     
-    throw error; // Re-throw to fail the job for manual attention
+    throw error;
   }
-}
-
-function cosineSim(vecA, vecB) {
-  const dot = vecA.reduce((sum, a, i) => sum + a * vecB[i], 0);
-  const magA = Math.sqrt(vecA.reduce((sum, a) => sum + a * a, 0));
-  const magB = Math.sqrt(vecB.reduce((sum, b) => sum + b * b, 0));
-  return magA && magB ? dot / (magA * magB) : 0;
 }
 
 async function run() {
   console.log(`\n=== Checking issue #${ISSUE_NUMBER} for duplicates ===`);
 
-  // Fetch the new issue with retry logic
   const { data: newIssue } = await retryApiCall(async () => {
     return await octokit.issues.get({
       owner: OWNER,
@@ -76,7 +67,6 @@ async function run() {
     });
   });
 
-  // Skip if it's actually a pull request
   if (newIssue.pull_request) {
     console.log("⏭️ Skipping pull request - not an issue");
     return;
@@ -85,7 +75,6 @@ async function run() {
   const newText = `${newIssue.title} ${newIssue.body || ""}`.trim();
   console.log(`Issue text: ${newText.substring(0, 100)}...`);
 
-  // Handle empty or very short issues
   if (newText.length < 10) {
     console.log("⚠️ Issue text too short for meaningful duplicate detection");
     await octokit.issues.createComment({
@@ -99,50 +88,47 @@ async function run() {
             `- Describing expected vs actual behavior\n\n` +
             `*This comment was generated automatically by Seroski-DupBot 🤖*`,
     });
-    return; // Skip processing
+    return;
   }
 
-  // Generate embedding for the new issue with retry logic
   console.log("Generating embedding for the new issue...");
-  const embeddings = {
-    embedQuery: async (text) => {
-      return await retryApiCall(async () => {
-        const response = await fetch(
-          `https://generativelanguage.googleapis.com/v1beta/models/text-embedding-004:embedContent?key=${process.env.GEMINI_API_KEY}`,
-          {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify({ 
-              model: "models/text-embedding-004",
-              content: { parts: [{ text: text }] }
-            }),
-          }
-        );
-        const data = await response.json();
-        
-        if (data.error || !data.embedding || !data.embedding.values) {
-          console.error("Embedding error:", data.error || "Invalid response");
-          return Array(1024).fill(0.01);
+  
+  const generateEmbedding = async (text) => {
+    return await retryApiCall(async () => {
+      const response = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/text-embedding-004:embedContent?key=${process.env.GEMINI_API_KEY}`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ 
+            model: "models/text-embedding-004",
+            content: { parts: [{ text: text }] }
+          }),
         }
-        
-        let embedding = data.embedding.values;
-        if (embedding.length < 1024) {
-          embedding = [...embedding, ...Array(1024 - embedding.length).fill(0)];
-        } else if (embedding.length > 1024) {
-          embedding = embedding.slice(0, 1024);
-        }
-        
-        return embedding;
-      });
-    }
+      );
+      const data = await response.json();
+      
+      if (data.error || !data.embedding || !data.embedding.values) {
+        console.error("Embedding error:", data.error || "Invalid response");
+        return Array(1024).fill(0.01);
+      }
+      
+      let embedding = data.embedding.values;
+      if (embedding.length < 1024) {
+        embedding = [...embedding, ...Array(1024 - embedding.length).fill(0)];
+      } else if (embedding.length > 1024) {
+        embedding = embedding.slice(0, 1024);
+      }
+      
+      return embedding;
+    });
   };
 
-  const newEmbedding = await embeddings.embedQuery(newText);
+  const newEmbedding = await generateEmbedding(newText);
   console.log("✅ Generated embedding for new issue");
 
-  // Check if this issue already exists in the vector database with error handling
   const index = pinecone.Index(indexName);
   console.log("Checking if issue already exists in vector database...");
   
@@ -151,9 +137,9 @@ async function run() {
 
   try {
     await safeVectorOperation(async () => {
-      // First, try to query using the current issue as a filter to find existing vectors
+      // Try to find existing vectors using metadata filter
       const queryResponse = await index.query({
-        vector: Array(1024).fill(0.1), // dummy vector for metadata filtering
+        vector: Array(1024).fill(0.1),
         topK: 100,
         includeValues: false,
         includeMetadata: true,
@@ -162,14 +148,12 @@ async function run() {
         }
       });
 
-      // If filter query works, use those results
       if (queryResponse.matches && queryResponse.matches.length > 0) {
         for (const match of queryResponse.matches) {
           existingVectorIds.push(match.id);
           console.log(`   📌 Found existing vector via filter: ${match.id}`);
         }
       } else {
-        // Fallback to listing all vectors (paginated approach)
         console.log("   🔄 Filter query returned no results, trying list approach...");
         let paginationToken = null;
         
@@ -198,11 +182,9 @@ async function run() {
       console.log(`Issue exists in DB: ${isEditingExistingIssue ? 'YES' : 'NO'} (${existingVectorIds.length} vectors found)`);
     }, "Could not check for existing issue vectors in the database.");
   } catch (error) {
-    // If vector operations fail, continue with basic processing
     console.error("Vector database check failed, continuing with basic processing...");
   }
 
-  // Use Pinecone native query for better similarity scores with error handling
   let results = [];
   let filteredResults = [];
   let duplicates = [];
@@ -220,16 +202,14 @@ async function run() {
       results = queryResponse.matches || [];
       console.log(`Found ${results.length} potential matches`);
 
-      // Filter out the current issue being processed (in case of edits)
       filteredResults = results.filter(r => 
         r.metadata?.issue_number !== ISSUE_NUMBER
       );
 
       console.log(`After filtering out current issue: ${filteredResults.length} matches`);
 
-      // Pinecone returns similarity scores (higher = more similar)
       duplicates = filteredResults
-        .filter(r => r.score >= SIMILARITY_THRESHOLD) // Use score directly from Pinecone
+        .filter(r => r.score >= SIMILARITY_THRESHOLD)
         .map(r => ({ 
           number: r.metadata?.issue_number || 'Unknown', 
           similarity: r.score,
@@ -238,7 +218,6 @@ async function run() {
 
       console.log(`Found ${duplicates.length} duplicates above threshold (${SIMILARITY_THRESHOLD})`);
       
-      // Debug: Show all scores
       filteredResults.forEach((result, index) => {
         const score = result.score || 0;
         console.log(`  ${index + 1}. Issue #${result.metadata?.issue_number || 'Unknown'} - Score: ${score.toFixed(4)} ${score >= SIMILARITY_THRESHOLD ? '🚨 DUPLICATE' : '✅ Below threshold'}`);
@@ -246,24 +225,19 @@ async function run() {
       });
     }, "Could not query the vector database for similar issues.");
   } catch (error) {
-    // If duplicate detection fails, still process as unique
     console.error("Duplicate detection failed, treating as unique issue...");
   }
 
-  // Comment based on duplicate findings
   let commentBody = '';
   let shouldUpdateVector = true;
 
   if (duplicates.length > 0) {
-    // Similar issues found
     shouldUpdateVector = false;
     
     if (isEditingExistingIssue) {
-      // This is an edit of an existing issue that now looks like a duplicate
       commentBody = `🚨 **Warning: Edited Issue Now Appears Similar to Existing Issues** 🚨\n\n`;
       commentBody += `After your recent edit, this issue now appears to be similar to the following existing issue(s):\n\n`;
     } else {
-      // This is a new issue that looks like a duplicate
       commentBody = `🚨 **Potential Duplicate Issues Detected** 🚨\n\n`;
       commentBody += `This issue appears to be similar to the following existing issue(s):\n\n`;
     }
@@ -284,7 +258,6 @@ async function run() {
     
     console.log(`⚠️  Duplicate detected! ${isEditingExistingIssue ? 'Will keep existing vectors but flag similarity.' : 'Will NOT add to vector store.'}`);
   } else {
-    // No similar issues found
     shouldUpdateVector = true;
     
     if (isEditingExistingIssue) {
@@ -302,7 +275,6 @@ async function run() {
     console.log(`✅ No duplicates found. ${isEditingExistingIssue ? 'Will update existing vectors.' : 'Will add new vectors.'}`);
   }
 
-  // Post comment on the issue with retry logic
   await retryApiCall(async () => {
     return await octokit.issues.createComment({
       owner: OWNER,
@@ -313,21 +285,17 @@ async function run() {
   });
   console.log("Comment posted on the issue.");
 
-  // Handle vector database operations with error handling
   if (shouldUpdateVector) {
     try {
       await safeVectorOperation(async () => {
         if (isEditingExistingIssue) {
-          // Update existing vectors with new content
           console.log("Updating existing issue vectors in Pinecone...");
           
-          // Delete old vectors first
           if (existingVectorIds.length > 0) {
             await index.deleteMany(existingVectorIds);
             console.log(`🗑️  Deleted ${existingVectorIds.length} old vector(s)`);
           }
           
-          // Add updated vector
           const vectorId = `issue-${ISSUE_NUMBER}-${Date.now()}`;
           await index.upsert([{
             id: vectorId,
@@ -344,7 +312,6 @@ async function run() {
           
           console.log("✅ Updated issue embedding in Pinecone with new content.");
         } else {
-          // Add new issue to vector database
           console.log("Adding new issue embedding to Pinecone...");
           
           const vectorId = `issue-${ISSUE_NUMBER}-${Date.now()}`;
@@ -368,7 +335,6 @@ async function run() {
     }
   } else {
     if (isEditingExistingIssue && duplicates.length > 0) {
-      // Keep existing vectors but don't update them since the edit made it look like a duplicate
       console.log("⚠️  Keeping existing vectors unchanged due to similarity detected after edit.");
     } else {
       console.log("⏭️  Skipped adding to Pinecone due to duplicate detection.");

@@ -78,22 +78,51 @@ async function cleanupClosedIssue() {
     
     try {
       await retryApiCall(async () => {
-        // List all vectors and filter by issue_number in metadata
-        // Note: Pinecone doesn't support metadata-based deletion directly via query,
-        // so we need to list and filter
-        const listResponse = await index.listPaginated();
-        
-        if (listResponse.vectors) {
-          for (const vector of listResponse.vectors) {
-            if (vector.metadata?.issue_number === ISSUE_NUMBER) {
-              vectorsToDelete.push(vector.id);
-              console.log(`   📌 Found vector: ${vector.id}`);
-            }
+        // First, try using metadata filter (same as check-duplicates.js)
+        const queryResponse = await index.query({
+          vector: Array(1024).fill(0.1), // dummy vector for metadata filtering
+          topK: 100,
+          includeValues: false,
+          includeMetadata: true,
+          filter: {
+            issue_number: ISSUE_NUMBER
           }
+        });
+
+        // If filter query works, use those results
+        if (queryResponse.matches && queryResponse.matches.length > 0) {
+          for (const match of queryResponse.matches) {
+            vectorsToDelete.push(match.id);
+            console.log(`   📌 Found vector via filter: ${match.id}`);
+          }
+        } else {
+          // Fallback to listing all vectors (paginated approach)
+          console.log("   🔄 Filter query returned no results, trying list approach...");
+          let paginationToken = null;
+          
+          do {
+            const listOptions = { limit: 100 };
+            if (paginationToken) {
+              listOptions.paginationToken = paginationToken;
+            }
+            
+            const listResponse = await index.listPaginated(listOptions);
+            
+            if (listResponse.vectors) {
+              for (const vector of listResponse.vectors) {
+                if (vector.metadata?.issue_number === ISSUE_NUMBER) {
+                  vectorsToDelete.push(vector.id);
+                  console.log(`   📌 Found vector via list: ${vector.id}`);
+                }
+              }
+            }
+            
+            paginationToken = listResponse.pagination?.next;
+          } while (paginationToken);
         }
       });
     } catch (error) {
-      console.error("❌ Failed to list vectors from Pinecone:", error.message);
+      console.error("❌ Failed to search vectors from Pinecone:", error.message);
       throw error;
     }
 
