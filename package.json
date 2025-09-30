@@ -7,7 +7,8 @@
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
     "populate-issues": "node scripts/populate-existing-issues.js",
-    "cleanup-issue": "node scripts/cleanup-closed-issue.js"
+    "cleanup-issue": "node scripts/cleanup-closed-issue.js",
+    "cleanup-specific": "node scripts/cleanup-specific-issue.js"
   },
   "repository": {
     "type": "git",

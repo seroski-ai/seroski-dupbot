@@ -151,15 +151,47 @@ async function run() {
 
   try {
     await safeVectorOperation(async () => {
-      const listResponse = await index.listPaginated();
-      
-      if (listResponse.vectors) {
-        for (const vector of listResponse.vectors) {
-          if (vector.metadata?.issue_number === ISSUE_NUMBER) {
-            existingVectorIds.push(vector.id);
-            console.log(`   📌 Found existing vector: ${vector.id}`);
-          }
+      // First, try to query using the current issue as a filter to find existing vectors
+      const queryResponse = await index.query({
+        vector: Array(1024).fill(0.1), // dummy vector for metadata filtering
+        topK: 100,
+        includeValues: false,
+        includeMetadata: true,
+        filter: {
+          issue_number: ISSUE_NUMBER
         }
+      });
+
+      // If filter query works, use those results
+      if (queryResponse.matches && queryResponse.matches.length > 0) {
+        for (const match of queryResponse.matches) {
+          existingVectorIds.push(match.id);
+          console.log(`   📌 Found existing vector via filter: ${match.id}`);
+        }
+      } else {
+        // Fallback to listing all vectors (paginated approach)
+        console.log("   🔄 Filter query returned no results, trying list approach...");
+        let paginationToken = null;
+        
+        do {
+          const listOptions = { limit: 100 };
+          if (paginationToken) {
+            listOptions.paginationToken = paginationToken;
+          }
+          
+          const listResponse = await index.listPaginated(listOptions);
+          
+          if (listResponse.vectors) {
+            for (const vector of listResponse.vectors) {
+              if (vector.metadata?.issue_number === ISSUE_NUMBER) {
+                existingVectorIds.push(vector.id);
+                console.log(`   📌 Found existing vector via list: ${vector.id}`);
+              }
+            }
+          }
+          
+          paginationToken = listResponse.pagination?.next;
+        } while (paginationToken);
       }
 
       isEditingExistingIssue = existingVectorIds.length > 0;
