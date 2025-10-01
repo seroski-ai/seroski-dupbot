@@ -4,37 +4,41 @@ This repository includes several GitHub Actions workflows for managing your Pine
 
 ## 📋 Available Workflows
 
-### 1. 🔧 Database Management & Validation (Manual)
-**File:** `.github/workflows/database-management.yml`
+### 1. �️ Database Operations (Manual)
+**File:** `.github/workflows/database-operations.yml`
 
-A comprehensive workflow for database operations with built-in API validation.
+Pure database management operations - no validation mixed in.
 
-**Actions Available:**
-- **Validate Connections** - Test all API connections (Pinecone, GitHub, Gemini)
-- **Populate Issues** - Safely add existing issues to the database (skips duplicates)
+**Operations Available:**
+- **Populate Issues** - Add existing GitHub issues to Pinecone database (skips duplicates)
 - **Cleanup Duplicates** - Remove duplicate vectors (requires force flag)
 - **Debug Database** - View database contents and statistics
 - **Clear All Vectors** - ⚠️ **DANGER:** Delete all vectors (requires force flag)
 
 **How to use:**
 1. Go to **Actions** tab in your repository
-2. Select **"Database Management & Validation"**
+2. Select **"Database Operations"**
 3. Click **"Run workflow"**
-4. Choose your action and enable force flag if needed
+4. Choose your operation and enable force flag if needed
 5. Click **"Run workflow"**
 
-### 2. ⚡ Quick Database Actions (Manual)
-**File:** `.github/workflows/quick-actions.yml`
+### 2. 🔍 API Validation (Manual)
+**File:** `.github/workflows/api-validation.yml`
 
-Fast validation and safe operations with granular API testing.
+Pure API connection testing - run before database operations.
 
-**Actions Available:**
-- **Validate All APIs** - Test all connections (Pinecone, GitHub, Gemini)
-- **Validate Pinecone Only** - Test only Pinecone database connection
-- **Validate GitHub Only** - Test only GitHub API connection
-- **Validate Gemini Only** - Test only Gemini API connection
-- **Populate Issues Safe** - Add existing issues (includes pre-validation)
-- **Debug Database Status** - Check database status (includes validation)
+**Validation Scopes:**
+- **All APIs** - Test all connections (Pinecone, GitHub, Gemini)
+- **Pinecone Only** - Test only Pinecone database connection
+- **GitHub Only** - Test only GitHub API connection  
+- **Gemini Only** - Test only Gemini AI API connection
+
+**How to use:**
+1. Go to **Actions** tab in your repository
+2. Select **"API Validation"**
+3. Click **"Run workflow"**
+4. Choose validation scope
+5. Click **"Run workflow"**
 
 ### 3. 🔍 Duplicate Issue Management (Automatic + Manual)
 **File:** `.github/workflows/duplicate-issue.yml`
@@ -47,6 +51,19 @@ Handles duplicate detection automatically and allows manual checks.
 
 **Manual triggers:**
 - Check any specific issue number for duplicates
+
+## 🎯 **Usage Examples:**
+
+### **Recommended Workflow:**
+1. **Validate APIs First:** Actions → API Validation → Choose "all-apis" → Run
+2. **Then Perform Operations:** Actions → Database Operations → Choose your operation
+
+### **Common Operations:**
+- **Validate APIs:** Actions → API Validation → Choose "all-apis" → Run
+- **Populate Issues:** Actions → Database Operations → Choose "populate-issues" → Run
+- **Clean Up Duplicates:** Actions → Database Operations → Choose "cleanup-duplicates" → ✅ Enable Force → Run
+- **Check Database Health:** Actions → Database Operations → Choose "debug-database" → Run
+- **Emergency Clear All:** Actions → Database Operations → Choose "clear-all-vectors" → ✅ Enable Force → Run
 
 ## 🛠️ Local Scripts (npm commands)
 

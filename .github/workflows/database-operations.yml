@@ -1,21 +1,20 @@
-name: Database Management & Validation
+name: Database Operations
 
 on:
   workflow_dispatch:
     inputs:
       action:
-        description: 'Choose action to perform'
+        description: 'Database operation to perform'
         required: true
-        default: 'validate-connections'
+        default: 'populate-issues'
         type: choice
         options:
-        - 'validate-connections'
         - 'populate-issues'
         - 'cleanup-duplicates'
         - 'debug-database'
         - 'clear-all-vectors'
       force:
-        description: 'Force action (for destructive operations)'
+        description: 'Force action (required for destructive operations)'
         required: false
         default: false
         type: boolean
@@ -25,7 +24,7 @@ permissions:
   contents: read
 
 jobs:
-  database-management:
+  database-operation:
     runs-on: ubuntu-latest
     
     steps:
@@ -40,18 +39,6 @@ jobs:
       - name: Install dependencies
         run: npm install
 
-      - name: Validate API Connections
-        if: github.event.inputs.action == 'validate-connections'
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-          GITHUB_REPOSITORY: ${{ github.repository }}
-          PINECONE_API_KEY: ${{ secrets.PINECONE_API_KEY }}
-          PINECONE_INDEX: ${{ secrets.PINECONE_INDEX }}
-        run: |
-          echo "🔍 Validating all API connections..."
-          node scripts/validate-apis.js
-
       - name: Populate Issues to Database
         if: github.event.inputs.action == 'populate-issues'
         env:
@@ -61,9 +48,8 @@ jobs:
           PINECONE_API_KEY: ${{ secrets.PINECONE_API_KEY }}
           PINECONE_INDEX: ${{ secrets.PINECONE_INDEX }}
         run: |
-          echo "🔍 Pre-validating connections..."
-          node scripts/validate-apis.js
-          echo "🚀 Starting population of existing issues..."
+          echo "🚀 Populating existing issues to database..."
+          echo "This will skip issues that already exist in the database."
           node scripts/populate-existing-issues.js
 
       - name: Cleanup Duplicate Vectors
@@ -72,9 +58,7 @@ jobs:
           PINECONE_API_KEY: ${{ secrets.PINECONE_API_KEY }}
           PINECONE_INDEX: ${{ secrets.PINECONE_INDEX }}
         run: |
-          echo "🔍 Pre-validating Pinecone connection..."
-          node scripts/validate-apis.js pinecone
-          echo "🧹 Starting cleanup of duplicate vectors..."
+          echo "🧹 Cleaning up duplicate vectors..."
           if [ "${{ github.event.inputs.force }}" = "true" ]; then
             node scripts/cleanup-duplicates.js --force
           else
@@ -89,8 +73,7 @@ jobs:
           PINECONE_API_KEY: ${{ secrets.PINECONE_API_KEY }}
           PINECONE_INDEX: ${{ secrets.PINECONE_INDEX }}
         run: |
-          echo "🔍 Validating connection and running diagnostics..."
-          node scripts/validate-apis.js pinecone
+          echo "🔍 Running database diagnostics..."
           node scripts/debug-pinecone.js
 
       - name: Clear All Vectors
@@ -99,8 +82,6 @@ jobs:
           PINECONE_API_KEY: ${{ secrets.PINECONE_API_KEY }}
           PINECONE_INDEX: ${{ secrets.PINECONE_INDEX }}
         run: |
-          echo "🔍 Pre-validating Pinecone connection..."
-          node scripts/validate-apis.js pinecone
           echo "🚨 DANGER: Clearing all vectors from database..."
           if [ "${{ github.event.inputs.force }}" = "true" ]; then
             echo "⚠️  This will delete ALL vectors in the database!"
@@ -111,13 +92,13 @@ jobs:
             exit 1
           fi
 
-      - name: Summary
+      - name: Operation Summary
         if: always()
         run: |
-          echo "### 📋 Database Management Summary" >> $GITHUB_STEP_SUMMARY
-          echo "- **Action:** ${{ github.event.inputs.action }}" >> $GITHUB_STEP_SUMMARY
+          echo "### 🗄️ Database Operation Summary" >> $GITHUB_STEP_SUMMARY
+          echo "- **Operation:** ${{ github.event.inputs.action }}" >> $GITHUB_STEP_SUMMARY
           echo "- **Force Flag:** ${{ github.event.inputs.force }}" >> $GITHUB_STEP_SUMMARY
           echo "- **Repository:** ${{ github.repository }}" >> $GITHUB_STEP_SUMMARY
           echo "- **Timestamp:** $(date -u)" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "✨ All operations include automatic API validation for reliability." >> $GITHUB_STEP_SUMMARY
+          echo "🔗 Use 'API Validation' workflow to test connections before database operations." >> $GITHUB_STEP_SUMMARY
