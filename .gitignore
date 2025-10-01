@@ -9,7 +9,6 @@ package-lock.json
 .env.staging
 
 # Test files
-scripts/test*
 test/
 *.test.js
 

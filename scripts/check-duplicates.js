@@ -1,12 +1,17 @@
 import { Octokit } from "@octokit/rest";
 import fetch from "node-fetch";
 import { Pinecone } from "@pinecone-database/pinecone";
+import dotenv from "dotenv";
+
+// Load environment variables (for local development)
+// In GitHub Actions, variables come from secrets
+dotenv.config();
 
 const octokit = new Octokit({ auth: process.env.GITHUB_TOKEN });
-const OWNER = process.env.GITHUB_REPOSITORY.split("/")[0];
-const REPO = process.env.GITHUB_REPOSITORY.split("/")[1];
+const OWNER = process.env.GITHUB_REPOSITORY?.split("/")[0] || process.env.GITHUB_OWNER;
+const REPO = process.env.GITHUB_REPOSITORY?.split("/")[1] || process.env.GITHUB_REPO;
 const ISSUE_NUMBER = Number(process.env.ISSUE_NUMBER);
-const SIMILARITY_THRESHOLD = parseFloat(process.env.SIMILARITY_THRESHOLD || "0.5");
+const SIMILARITY_THRESHOLD = parseFloat(process.env.SIMILARITY_THRESHOLD || "0.7");
 
 // Initialize Pinecone client
 const pinecone = new Pinecone({

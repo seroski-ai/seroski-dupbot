@@ -120,23 +120,110 @@ async function populateExistingIssues() {
     // Check if issues already exist in Pinecone to avoid duplicates
     console.log("🔍 Checking for existing issues in Pinecone...");
     
-    // Query existing vectors to see what's already there
-    const existingVectors = await index.listPaginated();
     const existingIssueNumbers = new Set();
     
-    if (existingVectors.vectors) {
-      for (const vector of existingVectors.vectors) {
-        if (vector.metadata?.issue_number) {
-          existingIssueNumbers.add(vector.metadata.issue_number);
+    try {
+      // Get index statistics first
+      const stats = await index.describeIndexStats();
+      const totalVectors = stats.totalRecordCount || 0;
+      console.log(`  📊 Index contains ${totalVectors} total vectors`);
+      
+      if (totalVectors === 0) {
+        console.log("  ℹ️  Index is empty, all issues will be processed");
+      } else {
+        // Use multiple approaches to check for existing vectors
+        console.log("  🔍 Checking for existing issue vectors...");
+        
+        // Method 1: Try to query with a sample vector to get some existing vectors
+        try {
+          console.log("    🔍 Sampling existing vectors...");
+          const sampleQuery = await index.query({
+            vector: Array(1024).fill(0.1),
+            topK: Math.min(100, totalVectors),
+            includeMetadata: true
+          });
+          
+          if (sampleQuery.matches && sampleQuery.matches.length > 0) {
+            console.log(`    📋 Found ${sampleQuery.matches.length} sample vectors`);
+            for (const match of sampleQuery.matches) {
+              if (match.metadata?.issue_number) {
+                existingIssueNumbers.add(match.metadata.issue_number);
+                console.log(`      ✓ Found existing issue #${match.metadata.issue_number}`);
+              }
+            }
+          }
+        } catch (sampleError) {
+          console.log("    ⚠️  Sample query failed, trying direct fetch approach");
+        }
+        
+        // Method 2: Try to fetch vectors by their expected IDs
+        console.log("    🔍 Checking by direct ID lookup...");
+        for (let i = 0; i < allIssues.length; i += 10) {
+          const batch = allIssues.slice(i, i + 10);
+          
+          // Try to fetch vectors by their expected IDs
+          const vectorIds = batch.map(issue => `issue-${issue.number}`);
+          
+          try {
+            const fetchResult = await index.fetch(vectorIds);
+            
+            if (fetchResult.vectors) {
+              Object.keys(fetchResult.vectors).forEach(vectorId => {
+                const match = vectorId.match(/issue-(\d+)/);
+                if (match) {
+                  const issueNum = parseInt(match[1]);
+                  if (!existingIssueNumbers.has(issueNum)) {
+                    existingIssueNumbers.add(issueNum);
+                    console.log(`      ✓ Found existing issue #${issueNum} by ID`);
+                  }
+                }
+              });
+            }
+          } catch (fetchError) {
+            // If fetch fails, try metadata filter queries for this batch
+            console.log(`      ⚠️  Fetch failed for batch, trying metadata queries...`);
+            for (const issue of batch) {
+              try {
+                const queryResult = await index.query({
+                  vector: Array(1024).fill(0.1),
+                  filter: { issue_number: { $eq: issue.number } },
+                  topK: 1,
+                  includeMetadata: true
+                });
+                
+                if (queryResult.matches && queryResult.matches.length > 0) {
+                  if (!existingIssueNumbers.has(issue.number)) {
+                    existingIssueNumbers.add(issue.number);
+                    console.log(`      ✓ Found existing issue #${issue.number} by query`);
+                  }
+                }
+              } catch (queryError) {
+                // Silently continue - assume issue doesn't exist
+              }
+            }
+          }
+          
+          // Small delay between batches
+          await delay(300);
         }
       }
+    } catch (error) {
+      console.log("  ⚠️  Error checking existing issues:", error.message);
+      console.log("  🔄 Will process all issues to be safe");
     }
     
     console.log(`Found ${existingIssueNumbers.size} existing issues in Pinecone`);
 
     // Filter out issues that already exist in Pinecone
     const newIssues = allIssues.filter(issue => !existingIssueNumbers.has(issue.number));
+    const skippedCount = allIssues.length - newIssues.length;
+    
     console.log(`📝 ${newIssues.length} new issues to process`);
+    console.log(`⏭️  ${skippedCount} issues skipped (already exist in Pinecone)`);
+    
+    if (skippedCount > 0) {
+      console.log(`   Skipped issues: ${Array.from(existingIssueNumbers).sort((a, b) => a - b).join(', ')}`);
+    }
 
     if (newIssues.length === 0) {
       console.log("✅ All open issues are already in Pinecone. Nothing to add.");
@@ -165,8 +252,8 @@ async function populateExistingIssues() {
           // Generate embedding
           const embedding = await generateEmbedding(issueText);
           
-          // Prepare vector for Pinecone
-          const vectorId = `issue-${issue.number}-${Date.now()}`;
+          // Prepare vector for Pinecone - use consistent ID format
+          const vectorId = `issue-${issue.number}`;
           vectors.push({
             id: vectorId,
             values: embedding,
@@ -198,11 +285,14 @@ async function populateExistingIssues() {
       // Upsert batch to Pinecone
       if (vectors.length > 0) {
         try {
+          console.log(`  🔄 Upserting ${vectors.length} vectors to Pinecone...`);
           await index.upsert(vectors);
           successful += vectors.length;
           console.log(`  ✅ Batch upserted to Pinecone: ${vectors.length} vectors`);
         } catch (error) {
           console.error(`  ❌ Failed to upsert batch to Pinecone:`, error.message);
+          // Log which specific issues failed
+          console.error(`    Failed issues: ${vectors.map(v => v.metadata.issue_number).join(', ')}`);
           failed += vectors.length;
         }
       }
