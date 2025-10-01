@@ -379,7 +379,7 @@ async function run() {
           repo: REPO,
           issue_number: ISSUE_NUMBER,
           state: 'closed',
-          state_reason: 'not_planned'
+          state_reason: 'duplicate'
         });
       });
       
