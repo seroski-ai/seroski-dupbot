@@ -1,4 +1,4 @@
-name: Manual Database Management
+name: Database Management & Validation
 
 on:
   workflow_dispatch:
@@ -6,10 +6,11 @@ on:
       action:
         description: 'Choose action to perform'
         required: true
-        default: 'populate'
+        default: 'validate-connections'
         type: choice
         options:
-        - 'populate'
+        - 'validate-connections'
+        - 'populate-issues'
         - 'cleanup-duplicates'
         - 'debug-database'
         - 'clear-all-vectors'
@@ -39,13 +40,8 @@ jobs:
       - name: Install dependencies
         run: npm install
 
-      - name: Validate action selection
-        run: |
-          echo "Selected action: ${{ github.event.inputs.action }}"
-          echo "Force flag: ${{ github.event.inputs.force }}"
-
-      - name: Populate Issues to Database
-        if: github.event.inputs.action == 'populate'
+      - name: Validate API Connections
+        if: github.event.inputs.action == 'validate-connections'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
@@ -53,6 +49,20 @@ jobs:
           PINECONE_API_KEY: ${{ secrets.PINECONE_API_KEY }}
           PINECONE_INDEX: ${{ secrets.PINECONE_INDEX }}
         run: |
+          echo "🔍 Validating all API connections..."
+          node scripts/validate-apis.js
+
+      - name: Populate Issues to Database
+        if: github.event.inputs.action == 'populate-issues'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          PINECONE_API_KEY: ${{ secrets.PINECONE_API_KEY }}
+          PINECONE_INDEX: ${{ secrets.PINECONE_INDEX }}
+        run: |
+          echo "🔍 Pre-validating connections..."
+          node scripts/validate-apis.js
           echo "🚀 Starting population of existing issues..."
           node scripts/populate-existing-issues.js
 
@@ -62,6 +72,8 @@ jobs:
           PINECONE_API_KEY: ${{ secrets.PINECONE_API_KEY }}
           PINECONE_INDEX: ${{ secrets.PINECONE_INDEX }}
         run: |
+          echo "🔍 Pre-validating Pinecone connection..."
+          node scripts/validate-apis.js pinecone
           echo "🧹 Starting cleanup of duplicate vectors..."
           if [ "${{ github.event.inputs.force }}" = "true" ]; then
             node scripts/cleanup-duplicates.js --force
@@ -77,7 +89,8 @@ jobs:
           PINECONE_API_KEY: ${{ secrets.PINECONE_API_KEY }}
           PINECONE_INDEX: ${{ secrets.PINECONE_INDEX }}
         run: |
-          echo "🔍 Running database diagnostics..."
+          echo "🔍 Validating connection and running diagnostics..."
+          node scripts/validate-apis.js pinecone
           node scripts/debug-pinecone.js
 
       - name: Clear All Vectors
@@ -86,6 +99,8 @@ jobs:
           PINECONE_API_KEY: ${{ secrets.PINECONE_API_KEY }}
           PINECONE_INDEX: ${{ secrets.PINECONE_INDEX }}
         run: |
+          echo "🔍 Pre-validating Pinecone connection..."
+          node scripts/validate-apis.js pinecone
           echo "🚨 DANGER: Clearing all vectors from database..."
           if [ "${{ github.event.inputs.force }}" = "true" ]; then
             echo "⚠️  This will delete ALL vectors in the database!"
@@ -105,4 +120,4 @@ jobs:
           echo "- **Repository:** ${{ github.repository }}" >> $GITHUB_STEP_SUMMARY
           echo "- **Timestamp:** $(date -u)" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "Check the job logs above for detailed results." >> $GITHUB_STEP_SUMMARY
+          echo "✨ All operations include automatic API validation for reliability." >> $GITHUB_STEP_SUMMARY

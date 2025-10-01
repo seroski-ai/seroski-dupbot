@@ -4,12 +4,13 @@ This repository includes several GitHub Actions workflows for managing your Pine
 
 ## 📋 Available Workflows
 
-### 1. 🔧 Database Management (Manual)
+### 1. 🔧 Database Management & Validation (Manual)
 **File:** `.github/workflows/database-management.yml`
 
-A comprehensive workflow for database operations with safety controls.
+A comprehensive workflow for database operations with built-in API validation.
 
 **Actions Available:**
+- **Validate Connections** - Test all API connections (Pinecone, GitHub, Gemini)
 - **Populate Issues** - Safely add existing issues to the database (skips duplicates)
 - **Cleanup Duplicates** - Remove duplicate vectors (requires force flag)
 - **Debug Database** - View database contents and statistics
@@ -17,20 +18,23 @@ A comprehensive workflow for database operations with safety controls.
 
 **How to use:**
 1. Go to **Actions** tab in your repository
-2. Select **"Database Management"**
+2. Select **"Database Management & Validation"**
 3. Click **"Run workflow"**
 4. Choose your action and enable force flag if needed
 5. Click **"Run workflow"**
 
-### 2. ⚡ Quick Actions (Manual)
+### 2. ⚡ Quick Database Actions (Manual)
 **File:** `.github/workflows/quick-actions.yml`
 
-Fast, safe operations you can run anytime.
+Fast validation and safe operations with granular API testing.
 
 **Actions Available:**
-- **Populate Issues** - Add existing issues (safe operation)
-- **Debug Status** - Check database status
-- **Test Connection** - Verify API connections (Pinecone, GitHub, Gemini)
+- **Validate All APIs** - Test all connections (Pinecone, GitHub, Gemini)
+- **Validate Pinecone Only** - Test only Pinecone database connection
+- **Validate GitHub Only** - Test only GitHub API connection
+- **Validate Gemini Only** - Test only Gemini API connection
+- **Populate Issues Safe** - Add existing issues (includes pre-validation)
+- **Debug Database Status** - Check database status (includes validation)
 
 ### 3. 🔍 Duplicate Issue Management (Automatic + Manual)
 **File:** `.github/workflows/duplicate-issue.yml`
@@ -49,10 +53,16 @@ Handles duplicate detection automatically and allows manual checks.
 You can also run these operations locally:
 
 ```bash
+# API Validation (NEW!)
+npm run validate              # Test all API connections
+npm run validate:pinecone     # Test only Pinecone connection  
+npm run validate:github       # Test only GitHub connection
+npm run validate:gemini       # Test only Gemini API connection
+
 # Safe operations
-npm run populate-issues    # Add existing issues to database
-npm run debug-db          # Check database status
-npm run check-duplicates  # Check for duplicates
+npm run populate-issues       # Add existing issues to database
+npm run debug-db             # Check database status
+npm run check-duplicates     # Check for duplicates
 
 # Cleanup operations  
 npm run cleanup-duplicates --force    # Remove duplicates
