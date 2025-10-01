@@ -358,7 +358,7 @@ async function run() {
           repo: REPO,
           issue_number: ISSUE_NUMBER,
           state: 'closed',
-          state_reason: 'not_planned' // This shows "Closed as not planned" which is appropriate for duplicates
+          state_reason: 'duplicate' // This shows "Closed as not planned" which is appropriate for duplicates
         });
       });
       
