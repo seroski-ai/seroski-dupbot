@@ -1,20 +1,13 @@
 import { Octokit } from "@octokit/rest";
 import fetch from "node-fetch";
 import { Pinecone } from "@pinecone-database/pinecone";
-import dotenv from "dotenv";
-
-// Load environment variables (for local development)
-// In GitHub Actions, variables come from secrets
-dotenv.config();
 
 const octokit = new Octokit({ auth: process.env.GITHUB_TOKEN });
-const OWNER =
-  process.env.GITHUB_REPOSITORY?.split("/")[0] || process.env.GITHUB_OWNER;
-const REPO =
-  process.env.GITHUB_REPOSITORY?.split("/")[1] || process.env.GITHUB_REPO;
+const OWNER = process.env.GITHUB_REPOSITORY.split("/")[0];
+const REPO = process.env.GITHUB_REPOSITORY.split("/")[1];
 const ISSUE_NUMBER = Number(process.env.ISSUE_NUMBER);
 const SIMILARITY_THRESHOLD = parseFloat(
-  process.env.SIMILARITY_THRESHOLD || "0.7"
+  process.env.SIMILARITY_THRESHOLD || "0.5"
 );
 
 // Initialize Pinecone client
@@ -284,10 +277,15 @@ async function run() {
       commentBody += `  Link: https://github.com/${OWNER}/${REPO}/issues/${dup.number}\n\n`;
     });
 
-    commentBody += `\nPlease check if your issue is already covered by the above issue(s). If your issue is different, please provide more specific details to help us distinguish it.\n\n`;
-
-    if (isEditingExistingIssue) {
-      commentBody += `⚠️ **Note**: Since this was previously a unique issue, we've kept it in our database but flagged this similarity for your attention.\n\n`;
+    if (!isEditingExistingIssue) {
+      // For new duplicate issues, close them
+      commentBody += `\n🔒 **This issue has been automatically closed as a duplicate.**\n\n`;
+      commentBody += `Please continue the discussion in the original issue above. If your problem is different, please open a new issue with more specific details to help us distinguish it.\n\n`;
+      commentBody += `Thank you for helping keep our issue tracker organized! 🙏\n\n`;
+    } else {
+      // For edited existing issues that now appear duplicate
+      commentBody += `\nPlease check if your issue is already covered by the above issue(s). If your issue is different, please provide more specific details to help us distinguish it.\n\n`;
+      commentBody += `⚠️ **Note**: Since this was previously a unique issue, we've kept it open but flagged this similarity for your attention.\n\n`;
     }
 
     commentBody +=
@@ -298,7 +296,7 @@ async function run() {
       `⚠️  Duplicate detected! ${
         isEditingExistingIssue
           ? "Will keep existing vectors but flag similarity."
-          : "Will NOT add to vector store."
+          : "Will close issue as duplicate and NOT add to vector store."
       }`
     );
   } else {
@@ -327,6 +325,7 @@ async function run() {
     );
   }
 
+  // Post the comment first
   await retryApiCall(async () => {
     return await octokit.issues.createComment({
       owner: OWNER,
@@ -337,6 +336,54 @@ async function run() {
   });
   console.log("Comment posted on the issue.");
 
+  // Close and label the issue if it's a new duplicate (not an edited existing issue)
+  if (duplicates.length > 0 && !isEditingExistingIssue) {
+    try {
+      // First add the duplicate label
+      await retryApiCall(async () => {
+        return await octokit.issues.addLabels({
+          owner: OWNER,
+          repo: REPO,
+          issue_number: ISSUE_NUMBER,
+          labels: ['duplicate']
+        });
+      });
+      
+      console.log(`🏷️  Added 'duplicate' label to issue #${ISSUE_NUMBER}`);
+      
+      // Then close the issue with 'not_planned' state reason (GitHub's recommended practice for duplicates)
+      await retryApiCall(async () => {
+        return await octokit.issues.update({
+          owner: OWNER,
+          repo: REPO,
+          issue_number: ISSUE_NUMBER,
+          state: 'closed',
+          state_reason: 'not_planned' // This shows "Closed as not planned" which is appropriate for duplicates
+        });
+      });
+      
+      console.log(`🔒 Issue #${ISSUE_NUMBER} has been closed as duplicate`);
+      
+    } catch (error) {
+      console.error(`❌ Failed to close/label issue #${ISSUE_NUMBER}:`, error.message);
+      
+      // Post error comment if automatic closure fails
+      try {
+        await retryApiCall(async () => {
+          return await octokit.issues.createComment({
+            owner: OWNER,
+            repo: REPO,
+            issue_number: ISSUE_NUMBER,
+            body: `⚠️ **Auto-close Failed** ⚠️\n\nThis issue was detected as a duplicate but could not be automatically closed. A maintainer will review this manually.\n\n*Error: ${error.message}*`
+          });
+        });
+      } catch (commentError) {
+        console.error(`❌ Failed to post error comment: ${commentError.message}`);
+      }
+    }
+  }
+
+  // Continue with vector database updates only for unique issues
   if (shouldUpdateVector) {
     try {
       await safeVectorOperation(async () => {
@@ -403,7 +450,7 @@ async function run() {
         "⚠️  Keeping existing vectors unchanged due to similarity detected after edit."
       );
     } else {
-      console.log("⏭️  Skipped adding to Pinecone due to duplicate detection.");
+      console.log("⏭️  Skipped adding to Pinecone due to duplicate detection and auto-closure.");
     }
   }
 
