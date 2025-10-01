@@ -10,7 +10,7 @@
     "cleanup-issue": "node scripts/cleanup-closed-issue.js",
     "cleanup-specific": "node scripts/cleanup-specific-issue.js",
     "cleanup-duplicates": "node scripts/cleanup-duplicates.js",
-    "debug-db": "node scripts/test-pinecone.js",
+    "debug-db": "node scripts/debug-pinecone.js",
     "clear-all": "echo '⚠️  Use: npm run clear-all:force' && exit 1",
     "clear-all:force": "node scripts/clear-all-vectors.js --force",
     "check-duplicates": "node scripts/check-duplicates.js"
