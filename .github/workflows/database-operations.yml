@@ -50,7 +50,7 @@ jobs:
         run: |
           echo "🚀 Populating existing issues to database..."
           echo "This will skip issues that already exist in the database."
-          node scripts/populate-existing-issues.js
+          node .github/scripts/populate-existing-issues.js
 
       - name: Cleanup Duplicate Vectors
         if: github.event.inputs.action == 'cleanup-duplicates'
@@ -60,7 +60,7 @@ jobs:
         run: |
           echo "🧹 Cleaning up duplicate vectors..."
           if [ "${{ github.event.inputs.force }}" = "true" ]; then
-            node scripts/cleanup-duplicates.js --force
+            node .github/scripts/cleanup-duplicates.js --force
           else
             echo "❌ Cleanup requires force flag to be enabled for safety!"
             echo "Please re-run the workflow with 'Force action' checked."
@@ -74,7 +74,7 @@ jobs:
           PINECONE_INDEX: ${{ secrets.PINECONE_INDEX }}
         run: |
           echo "🔍 Running database diagnostics..."
-          node scripts/debug-pinecone.js
+          node .github/scripts/debug-pinecone.js
 
       - name: Clear All Vectors
         if: github.event.inputs.action == 'clear-all-vectors'
@@ -85,7 +85,7 @@ jobs:
           echo "🚨 DANGER: Clearing all vectors from database..."
           if [ "${{ github.event.inputs.force }}" = "true" ]; then
             echo "⚠️  This will delete ALL vectors in the database!"
-            node scripts/clear-all-vectors.js --force
+            node .github/scripts/clear-all-vectors.js --force
           else
             echo "❌ Clear all requires force flag to be enabled for safety!"
             echo "Please re-run the workflow with 'Force action' checked."

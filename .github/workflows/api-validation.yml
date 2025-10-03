@@ -44,7 +44,7 @@ jobs:
           PINECONE_INDEX: ${{ secrets.PINECONE_INDEX }}
         run: |
           echo "🔍 Validating all API connections..."
-          node scripts/validate-apis.js
+          node .github/scripts/validate-apis.js
 
       - name: Validate Pinecone Only
         if: github.event.inputs.validation_scope == 'pinecone-only'
@@ -53,7 +53,7 @@ jobs:
           PINECONE_INDEX: ${{ secrets.PINECONE_INDEX }}
         run: |
           echo "🔍 Validating Pinecone database connection..."
-          node scripts/validate-apis.js pinecone
+          node .github/scripts/validate-apis.js pinecone
 
       - name: Validate GitHub Only
         if: github.event.inputs.validation_scope == 'github-only'
@@ -62,7 +62,7 @@ jobs:
           GITHUB_REPOSITORY: ${{ github.repository }}
         run: |
           echo "🔍 Validating GitHub API connection..."
-          node scripts/validate-apis.js github
+          node .github/scripts/validate-apis.js github
 
       - name: Validate Gemini Only
         if: github.event.inputs.validation_scope == 'gemini-only'
@@ -70,7 +70,7 @@ jobs:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
         run: |
           echo "🔍 Validating Gemini API connection..."
-          node scripts/validate-apis.js gemini
+          node .github/scripts/validate-apis.js gemini
 
       - name: Validation Summary
         if: always()
