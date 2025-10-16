@@ -194,10 +194,35 @@ We love new ideas! To suggest a feature:
 ### File Organization
 
 ```
-.github/
-  scripts/          # Utility scripts
-  workflows/        # GitHub Actions workflows
+seroski-dupbot/
+├── .github/
+│   ├── scripts/                          # Automation and utility scripts
+│   │   ├── check-duplicates.js          # Manual duplicate detection
+│   │   ├── cleanup-closed-issue.js      # Remove closed issues from DB
+│   │   ├── cleanup-duplicates.js        # Clean duplicate vectors
+│   │   ├── cleanup-specific-issue.js    # Remove specific issue
+│   │   ├── clear-all-vectors.js         # Clear entire database
+│   │   ├── debug-pinecone.js            # Debug database contents
+│   │   ├── populate-existing-issues.js  # Initial DB population
+│   │   └── validate-apis.js             # API connection validation
+│   └── workflows/                        # GitHub Actions workflows
+│       ├── api-validation.yml           # Validate API connections
+│       ├── database-operations.yml      # Database management
+│       └── duplicate-issue.yml          # Auto duplicate detection
+├── .env.demo                             # Environment template
+├── .gitignore                            # Git ignore rules
+├── CONTRIBUTING.md                       # This file!
+├── LICENSE                               # MIT License
+├── README.md                             # Project documentation
+├── WORKFLOWS.md                          # Workflow documentation
+└── package.json                          # Dependencies and scripts
 ```
+
+**Key Files to Know:**
+- **Scripts** (`/.github/scripts/`): Core functionality for duplicate detection, database operations, and API validation
+- **Workflows** (`/.github/workflows/`): GitHub Actions that automate the bot
+- **Configuration** (`.env.demo`): Template for environment variables
+- **Documentation** (`README.md`, `WORKFLOWS.md`): User guides and workflow details
 
 ### Example Code Style
 
