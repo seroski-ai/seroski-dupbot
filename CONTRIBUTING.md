@@ -164,6 +164,7 @@ We love new ideas! To suggest a feature:
    ```
 
 6. **Open a Pull Request** on GitHub:
+   - **Target the `dev` branch** (not `main`)
    - Use a clear, descriptive title
    - Reference related issues (e.g., "Fixes #123")
    - Describe what changed and why
