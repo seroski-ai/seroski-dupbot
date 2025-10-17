@@ -8,7 +8,15 @@ const __maybeLoadDotenv = async () => {
     try {
       const dotenv = await import("dotenv");
       dotenv.default?.config?.() || dotenv.config?.();
-    } catch (_) {}
+    } catch (error) {
+      if (
+        error?.code === "ERR_MODULE_NOT_FOUND" ||
+        (typeof error?.message === "string" && error.message.includes("Cannot find module"))
+      ) {
+        return;
+      }
+      throw error;
+    }
   }
 };
 await __maybeLoadDotenv();
