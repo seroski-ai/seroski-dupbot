@@ -2,6 +2,7 @@ import { Pinecone } from "@pinecone-database/pinecone";
 import { Octokit } from "@octokit/rest";
 import fetch from "node-fetch";
 import { maybeLoadDotenv } from "./utils/env.js";
+import logger from "./utils/logger.js";
 await maybeLoadDotenv();
 
 // Validation functions
@@ -19,14 +20,14 @@ async function validatePinecone() {
     
     const stats = await index.describeIndexStats();
     
-    console.log('✅ Pinecone connection successful');
-    console.log(`📊 Index: ${process.env.PINECONE_INDEX}`);
-    console.log(`📈 Total vectors: ${stats.totalRecordCount || 0}`);
-    console.log(`📐 Dimension: ${stats.dimension}`);
+    logger.success('Pinecone connection successful');
+    logger.data(`📊 Index: ${process.env.PINECONE_INDEX}`);
+    logger.data(`📈 Total vectors: ${stats.totalRecordCount || 0}`);
+    logger.data(`📐 Dimension: ${stats.dimension}`);
     
     return { success: true, stats };
   } catch (error) {
-    console.error('❌ Pinecone validation failed:', error.message);
+    logger.error('Pinecone validation failed:', error.message);
     return { success: false, error: error.message };
   }
 }
@@ -45,13 +46,13 @@ async function validateGitHub() {
     
     const result = await octokit.repos.get({ owner, repo });
     
-    console.log('✅ GitHub connection successful');
-    console.log(`📋 Repository: ${result.data.full_name}`);
-    console.log(`🔓 Access: ${result.data.permissions?.admin ? 'Admin' : result.data.permissions?.push ? 'Write' : 'Read'}`);
+    logger.success('GitHub connection successful');
+    logger.data(`📋 Repository: ${result.data.full_name}`);
+    logger.data(`🔓 Access: ${result.data.permissions?.admin ? 'Admin' : result.data.permissions?.push ? 'Write' : 'Read'}`);
     
     return { success: true, repo: result.data };
   } catch (error) {
-    console.error('❌ GitHub validation failed:', error.message);
+    logger.error('GitHub validation failed:', error.message);
     return { success: false, error: error.message };
   }
 }
@@ -85,19 +86,19 @@ async function validateGemini() {
       throw new Error(data.error.message || 'Unknown Gemini API error');
     }
 
-    console.log('✅ Gemini API connection successful');
-    console.log('🧠 Model: text-embedding-004');
-    console.log(`📊 Embedding dimension: ${data.embedding?.values?.length || 'unknown'}`);
+    logger.success('Gemini API connection successful');
+    logger.data('🧠 Model: text-embedding-004');
+    logger.data(`📊 Embedding dimension: ${data.embedding?.values?.length || 'unknown'}`);
     
     return { success: true, embedding: data.embedding };
   } catch (error) {
-    console.error('❌ Gemini validation failed:', error.message);
+    logger.error('Gemini validation failed:', error.message);
     return { success: false, error: error.message };
   }
 }
 
 async function validateAllConnections() {
-  console.log('🔍 === API Connection Validation ===\n');
+  logger.header('🔍 === API Connection Validation ===\n');
   
   const results = {
     pinecone: await validatePinecone(),
@@ -105,19 +106,19 @@ async function validateAllConnections() {
     gemini: await validateGemini()
   };
   
-  console.log('\n📋 === Validation Summary ===');
+  logger.header('\n📋 === Validation Summary ===');
   
   const successful = Object.values(results).filter(r => r.success).length;
   const total = Object.keys(results).length;
   
-  console.log(`✅ Successful: ${successful}/${total}`);
-  console.log(`❌ Failed: ${total - successful}/${total}`);
+  logger.log(`✅ Successful: ${successful}/${total}`);
+  logger.log(`❌ Failed: ${total - successful}/${total}`);
   
   if (successful === total) {
-    console.log('\n🎉 All API connections are working correctly!');
+    logger.success('\n🎉 All API connections are working correctly!');
     process.exit(0);
   } else {
-    console.log('\n⚠️  Some API connections failed. Check the errors above.');
+    logger.warn('\nSome API connections failed. Check the errors above.');
     process.exit(1);
   }
 }
@@ -127,7 +128,7 @@ const args = process.argv.slice(2);
 const service = args[0];
 
 if (args.includes('--help') || args.includes('-h')) {
-  console.log(`
+  logger.info(`
 📖 Usage: node .github/scripts/validate-apis.js [service]
 
 🔧 Available Services:
