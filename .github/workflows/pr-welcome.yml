@@ -45,11 +45,24 @@ jobs:
               '*Check out the developer: [Portfolio](https://portfolio.rosk.dev)*'
             ].join('\n');
 
-            await github.rest.issues.createComment({
+            // Check for existing welcome comment
+            const existingComments = await github.rest.issues.listComments({
               owner: context.repo.owner,
               repo: context.repo.repo,
-              issue_number: prNumber,
-              body: message
+              issue_number: prNumber
             });
-            
-            console.log(`✅ Welcome comment posted to PR #${prNumber} by @${contributor}`);
+
+            const marker = '*This comment was generated automatically by Seroski-DupBot 🤖*';
+            const alreadyExists = existingComments.data.some(comment => comment.body && comment.body.includes(marker));
+
+            if (alreadyExists) {
+              console.log(`⚠️ Welcome comment already exists on PR #${prNumber}, skipping.`);
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: prNumber,
+                body: message
+              });
+              console.log(`✅ Welcome comment posted to PR #${prNumber} by @${contributor}`);
+            }
