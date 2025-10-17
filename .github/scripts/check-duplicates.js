@@ -101,7 +101,7 @@ async function verifyWithAI(newIssue, candidateIssue) {
     const text = data?.candidates?.[0]?.content?.parts?.[0]?.text || "";
     let raw = text.trim();
     if (raw.startsWith("```")) {
-      raw = raw.replace(/^```[a-zA-Z]*\n?/ , "").replace(/```\s*$/, "");
+      raw = raw.replace(/^```[a-zA-Z]*\n?/, "").replace(/```\s*$/, "");
     }
     let parsed;
     try { parsed = JSON.parse(raw); } catch (_) {
