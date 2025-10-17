@@ -6,7 +6,6 @@ on:
 
 permissions:
   issues: write
-  pull-requests: write
 
 jobs:
   welcome:
@@ -20,11 +19,13 @@ jobs:
           script: |
             const contributor = context.payload.pull_request.user.login;
             const prNumber = context.payload.pull_request.number;
+            const repoName = context.repo.repo;
+            const owner = context.repo.owner;
             
             const message = [
               '🎉 **Thank You for Your Contribution!** 🎉',
               '',
-              `@${contributor}, thank you for taking the time to contribute to Seroski-DupBot!`,
+              `@${contributor}, thank you for taking the time to contribute to ${repoName}!`,
               '',
               'Your pull request has been received and will be reviewed by a maintainer soon. Here\'s what happens next:',
               '',
@@ -33,9 +34,9 @@ jobs:
               '3. ✅ **Approval & Merge** - Once approved, your PR will be merged',
               '',
               '📚 **Need Help?**',
-              '- Check our [Contributing Guide](../../CONTRIBUTING.md) for guidelines',
+              `- Check our [Contributing Guide](https://github.com/${owner}/${repoName}/blob/HEAD/CONTRIBUTING.md) for guidelines`,
               '- Feel free to ask questions in the PR comments',
-              '- Review our [Workflows Documentation](../../WORKFLOWS.md) to understand our processes',
+              `- Review our [Workflows Documentation](https://github.com/${owner}/${repoName}/blob/HEAD/WORKFLOWS.md) to understand our processes`,
               '',
               'Thank you for making this project better! 🚀',
               '',

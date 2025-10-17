@@ -55,7 +55,7 @@ Handles duplicate detection automatically and allows manual checks.
 ### 4. 🎉 PR Welcome Message (Automatic)
 **File:** `.github/workflows/pr-welcome.yml`
 
-Automatically welcomes new contributors when they open a pull request.
+Automatically welcomes all contributors when they open a pull request.
 
 **Automatic triggers:**
 - When a pull request is opened
