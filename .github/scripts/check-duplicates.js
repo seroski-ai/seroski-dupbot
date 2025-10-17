@@ -2,6 +2,17 @@ import { Octokit } from "@octokit/rest";
 import fetch from "node-fetch";
 import { Pinecone } from "@pinecone-database/pinecone";
 
+const __maybeLoadDotenv = async () => {
+  const isCI = process.env.GITHUB_ACTIONS === "true" || process.env.CI === "true";
+  if (!isCI) {
+    try {
+      const dotenv = await import("dotenv");
+      dotenv.default?.config?.() || dotenv.config?.();
+    } catch (_) {}
+  }
+};
+await __maybeLoadDotenv();
+
 const octokit = new Octokit({ auth: process.env.GITHUB_TOKEN });
 const OWNER = process.env.GITHUB_REPOSITORY.split("/")[0];
 const REPO = process.env.GITHUB_REPOSITORY.split("/")[1];
@@ -9,6 +20,7 @@ const ISSUE_NUMBER = Number(process.env.ISSUE_NUMBER);
 const SIMILARITY_THRESHOLD = parseFloat(
   process.env.SIMILARITY_THRESHOLD || "0.5"
 );
+
 
 // Initialize Pinecone client
 const pinecone = new Pinecone({
