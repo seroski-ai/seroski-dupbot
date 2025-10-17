@@ -73,6 +73,53 @@ async function safeVectorOperation(operation, fallbackMessage) {
   }
 }
 
+async function verifyWithAI(newIssue, candidateIssue) {
+  const enabled = (process.env.AI_VERIFICATION_ENABLED || "false").toLowerCase() === "true";
+  if (!enabled) {
+    return { enabled: false };
+  }
+  const aTitle = newIssue.title || "";
+  const aBody = newIssue.body || "";
+  const bTitle = candidateIssue.title || "";
+  const bBody = candidateIssue.body || "";
+  const truncate = (s) => (s && s.length > 4000 ? s.slice(0, 4000) : s || "");
+  const prompt = `You are an assistant that determines if two GitHub issues describe the same underlying problem. Only return valid JSON matching the schema and nothing else.\n\nSchema:\n{\n  "is_duplicate": boolean,\n  "confidence": number,\n  "reason": "string"\n}\n\nGuidelines:\n- Ignore superficial word overlap; focus on behavior, repro steps, expected vs actual.\n- If uncertain or details are insufficient, set is_duplicate=false and confidence<=0.5.\n\nIssue A:\nTitle: ${aTitle}\nBody:\n${truncate(aBody)}\n\nIssue B:\nTitle: ${bTitle}\nBody:\n${truncate(bBody)}\n`;
+  try {
+    const resp = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${process.env.GEMINI_API_KEY}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        contents: [
+          { role: "user", parts: [{ text: prompt }] }
+        ]
+      })
+    });
+    const data = await resp.json();
+    const text = data?.candidates?.[0]?.content?.parts?.[0]?.text || "";
+    let raw = text.trim();
+    if (raw.startsWith("```")) {
+      raw = raw.replace(/^```[a-zA-Z]*\n?/ , "").replace(/```\s*$/, "");
+    }
+    let parsed;
+    try { parsed = JSON.parse(raw); } catch (_) {
+      const firstBrace = raw.indexOf("{");
+      const lastBrace = raw.lastIndexOf("}");
+      if (firstBrace !== -1 && lastBrace !== -1) {
+        parsed = JSON.parse(raw.slice(firstBrace, lastBrace + 1));
+      }
+    }
+    const isBool = typeof parsed?.is_duplicate === "boolean";
+    const confNum = typeof parsed?.confidence === "number" ? parsed.confidence : NaN;
+    const reasonStr = typeof parsed?.reason === "string" ? parsed.reason.slice(0, 240) : "";
+    if (!isBool || Number.isNaN(confNum)) {
+      return { enabled: true, valid: false };
+    }
+    return { enabled: true, valid: true, is_duplicate: parsed.is_duplicate, confidence: confNum, reason: reasonStr };
+  } catch (e) {
+    return { enabled: true, valid: false };
+  }
+}
+
 async function run() {
   console.log(`\n=== Checking issue #${ISSUE_NUMBER} for duplicates ===`);
 
@@ -271,16 +318,60 @@ async function run() {
     console.error("Duplicate detection failed, treating as unique issue...");
   }
 
+  const AI_ENABLED = (process.env.AI_VERIFICATION_ENABLED || "false").toLowerCase() === "true";
+  const AI_TOPK = Math.max(1, parseInt(process.env.AI_VERIFICATION_TOPK || "3", 10));
+  const AI_THRESHOLD = parseFloat(process.env.AI_VERIFICATION_CONFIDENCE_THRESHOLD || "0.75");
+  let aiVerdicts = new Map();
+  if (AI_ENABLED && duplicates.length > 0) {
+    const topK = duplicates.slice(0, AI_TOPK);
+    for (const d of topK) {
+      try {
+        const { data: cand } = await retryApiCall(async () => {
+          return await octokit.issues.get({ owner: OWNER, repo: REPO, issue_number: d.number });
+        });
+        const verdict = await verifyWithAI({ title: newIssue.title, body: newIssue.body || "" }, { title: cand.title, body: cand.body || "" });
+        if (verdict.enabled) {
+          if (verdict.valid) {
+            aiVerdicts.set(d.number, verdict);
+            console.log(`AI verdict for #${d.number}: dup=${verdict.is_duplicate} conf=${verdict.confidence.toFixed(2)} reason="${verdict.reason}"`);
+          } else {
+            console.log(`AI verdict for #${d.number}: invalid response, skipping`);
+          }
+        }
+      } catch (_) {
+        console.log(`AI verification failed for #${d.number}`);
+      }
+    }
+  }
+
   // 3-tier duplicate detection system
   let commentBody = "";
   let shouldUpdateVector = true;
   let shouldAutoClose = false;
   let duplicateAction = "none";
+  let aiNote = "";
 
   // Categorize duplicates by similarity score
-  const highSimilarityDuplicates = duplicates.filter(d => d.similarity >= 0.85);
-  const mediumSimilarityDuplicates = duplicates.filter(d => d.similarity >= 0.55 && d.similarity < 0.85);
-  
+  let highSimilarityDuplicates = duplicates.filter(d => d.similarity >= 0.85);
+  let mediumSimilarityDuplicates = duplicates.filter(d => d.similarity >= 0.55 && d.similarity < 0.85);
+
+  if (AI_ENABLED) {
+    const passesAI = (d) => {
+      const v = aiVerdicts.get(d.number);
+      return v && v.valid && v.is_duplicate === true && v.confidence >= AI_THRESHOLD;
+    };
+    const hs = highSimilarityDuplicates.filter(passesAI);
+    const ms = mediumSimilarityDuplicates.filter(passesAI);
+    if (highSimilarityDuplicates.length > 0 && hs.length === 0) {
+      console.log("AI vetoed all high-similarity candidates");
+    }
+    if (mediumSimilarityDuplicates.length > 0 && ms.length === 0) {
+      console.log("AI vetoed all medium-similarity candidates");
+    }
+    highSimilarityDuplicates = hs;
+    mediumSimilarityDuplicates = ms;
+  }
+
   if (highSimilarityDuplicates.length > 0) {
     // TIER 1: High similarity (>= 0.85) - Auto-close as duplicate
     duplicateAction = "auto-close";
@@ -295,13 +386,21 @@ async function run() {
       commentBody += `After your recent edit, this issue appears to be a duplicate of:\n\n`;
       commentBody += `- Issue #${topMatch.number}: "${topMatch.title}" (${similarityPercent}% similar)\n`;
       commentBody += `  Link: https://github.com/${OWNER}/${REPO}/issues/${topMatch.number}\n\n`;
-      commentBody += `⚠️ **Note**: Since this was previously a unique issue, we've kept it open but flagged this high similarity for your attention.\n\n`;
+      if (AI_ENABLED) {
+        const v = aiVerdicts.get(topMatch.number);
+        if (v?.valid) aiNote = `AI: dup=${v.is_duplicate}, conf=${v.confidence.toFixed(2)} — ${v.reason}\n\n`;
+      }
+      commentBody += aiNote || `⚠️ **Note**: Since this was previously a unique issue, we've kept it open but flagged this high similarity for your attention.\n\n`;
     } else {
       commentBody = `🚨 **Duplicate Detected** 🚨\n\n`;
       commentBody += `This issue appears to be a duplicate of:\n\n`;
       commentBody += `- Issue #${topMatch.number}: "${topMatch.title}" (${similarityPercent}% similar)\n`;
       commentBody += `  Link: https://github.com/${OWNER}/${REPO}/issues/${topMatch.number}\n\n`;
-      commentBody += `🔒 **This issue has been automatically closed as a duplicate.**\n\n`;
+      if (AI_ENABLED) {
+        const v = aiVerdicts.get(topMatch.number);
+        if (v?.valid) aiNote = `AI: dup=${v.is_duplicate}, conf=${v.confidence.toFixed(2)} — ${v.reason}\n\n`;
+      }
+      commentBody += (aiNote || "") + `🔒 **This issue has been automatically closed as a duplicate.**\n\n`;
       commentBody += `Please continue the discussion in the original issue above. If your problem is different, please open a new issue with more specific details.\n\n`;
     }
 
@@ -326,7 +425,11 @@ async function run() {
     
     commentBody += `- Issue #${topMatch.number}: "${topMatch.title}" (${similarityPercent}% similar)\n`;
     commentBody += `  Link: https://github.com/${OWNER}/${REPO}/issues/${topMatch.number}\n\n`;
-    commentBody += `This issue is not identical but may be related. A maintainer will review to determine if they should be linked or if this is indeed a separate issue.\n\n`;
+    if (AI_ENABLED) {
+      const v = aiVerdicts.get(topMatch.number);
+      if (v?.valid) aiNote = `AI: dup=${v.is_duplicate}, conf=${v.confidence.toFixed(2)} — ${v.reason}\n\n`;
+    }
+    commentBody += (aiNote || `This issue is not identical but may be related. A maintainer will review to determine if they should be linked or if this is indeed a separate issue.\n\n`);
     
     console.log(`🤔 POTENTIALLY RELATED issue detected! Similarity: ${similarityPercent}% with issue #${topMatch.number}`);
     
