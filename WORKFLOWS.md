@@ -52,6 +52,29 @@ Handles duplicate detection automatically and allows manual checks.
 **Manual triggers:**
 - Check any specific issue number for duplicates
 
+### 4. 🎉 PR Welcome Message (Automatic)
+**File:** `.github/workflows/pr-welcome.yml`
+
+Automatically welcomes all contributors when they open a pull request.
+
+**Automatic triggers:**
+- When a pull request is opened
+- Posts a friendly welcome message immediately
+
+**What contributors receive:**
+- Thank you message with their username
+- Clear explanation of the review process (3 steps)
+- Links to contributing guidelines and documentation
+- Encouragement to ask questions
+- Bot signature with developer portfolio link
+
+**Benefits:**
+- Makes contributors feel appreciated immediately
+- Sets clear expectations about the review process
+- Reduces maintainer workload with automated responses
+- Maintains consistent, professional communication
+- Encourages future contributions
+
 ## 🎯 **Usage Examples:**
 
 ### **Recommended Workflow:**

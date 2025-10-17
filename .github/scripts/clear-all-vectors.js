@@ -1,15 +1,6 @@
 import { Pinecone } from "@pinecone-database/pinecone";
-
-const __maybeLoadDotenv = async () => {
-  const isCI = process.env.GITHUB_ACTIONS === "true" || process.env.CI === "true";
-  if (!isCI) {
-    try {
-      const dotenv = await import("dotenv");
-      dotenv.default?.config?.() || dotenv.config?.();
-    } catch (_) {}
-  }
-};
-await __maybeLoadDotenv();
+import { maybeLoadDotenv } from "./utils/env.js";
+await maybeLoadDotenv();
 
 const pinecone = new Pinecone({
   apiKey: process.env.PINECONE_API_KEY,

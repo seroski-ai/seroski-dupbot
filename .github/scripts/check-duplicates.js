@@ -1,6 +1,8 @@
 import { Octokit } from "@octokit/rest";
 import fetch from "node-fetch";
 import { Pinecone } from "@pinecone-database/pinecone";
+import { maybeLoadDotenv } from "./utils/env.js";
+await maybeLoadDotenv();
 
 const __maybeLoadDotenv = async () => {
   const isCI = process.env.GITHUB_ACTIONS === "true" || process.env.CI === "true";
@@ -14,8 +16,8 @@ const __maybeLoadDotenv = async () => {
 await __maybeLoadDotenv();
 
 const octokit = new Octokit({ auth: process.env.GITHUB_TOKEN });
-const OWNER = process.env.GITHUB_REPOSITORY.split("/")[0];
-const REPO = process.env.GITHUB_REPOSITORY.split("/")[1];
+const repoStr = process.env.GITHUB_REPOSITORY;
+const [OWNER, REPO] = repoStr?.split("/") ?? [process.env.GITHUB_OWNER, process.env.GITHUB_REPO];
 const ISSUE_NUMBER = Number(process.env.ISSUE_NUMBER);
 const SIMILARITY_THRESHOLD = parseFloat(
   process.env.SIMILARITY_THRESHOLD || "0.5"
