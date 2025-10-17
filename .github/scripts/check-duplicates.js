@@ -329,8 +329,8 @@ async function run() {
     const topK = duplicates.slice(0, AI_TOPK);
     for (const d of topK) {
       try {
-        const { data: cand } = await retryApiCall(async () => {
-          return await octokit.issues.get({ owner: OWNER, repo: REPO, issue_number: d.number });
+        const { data: cand } = await retryApiCall(() => {
+          return octokit.issues.get({ owner: OWNER, repo: REPO, issue_number: d.number });
         });
         const verdict = await verifyWithAI({ title: newIssue.title, body: newIssue.body || "" }, { title: cand.title, body: cand.body || "" });
         if (verdict.enabled) {
