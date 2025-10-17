@@ -13,7 +13,6 @@ on:
         - 'pinecone-only'
         - 'github-only'
         - 'gemini-only'
-
 permissions:
   issues: read
   contents: read
