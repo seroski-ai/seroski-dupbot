@@ -1,0 +1,53 @@
+name: 🎉 Welcome New Contributors
+
+on:
+  pull_request:
+    types: [opened]
+
+permissions:
+  pull-requests: write
+
+jobs:
+  welcome:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Post welcome comment
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const contributor = context.payload.pull_request.user.login;
+            const prNumber = context.payload.pull_request.number;
+            
+            const message = [
+              '🎉 **Thank You for Your Contribution!** 🎉',
+              '',
+              `@${contributor}, thank you for taking the time to contribute to Seroski-DupBot!`,
+              '',
+              'Your pull request has been received and will be reviewed by a maintainer soon. Here\'s what happens next:',
+              '',
+              '1. 📋 **Maintainer Review** - A project maintainer will review your changes',
+              '2. 💬 **Feedback** - We may request changes or ask questions',
+              '3. ✅ **Approval & Merge** - Once approved, your PR will be merged',
+              '',
+              '📚 **Need Help?**',
+              '- Check our [Contributing Guide](../../CONTRIBUTING.md) for guidelines',
+              '- Feel free to ask questions in the PR comments',
+              '- Review our [Workflows Documentation](../../WORKFLOWS.md) to understand our processes',
+              '',
+              'Thank you for making this project better! 🚀',
+              '',
+              '---',
+              '*This comment was generated automatically by Seroski-DupBot 🤖*',
+              '*Check out the developer: [Portfolio](https://portfolio.rosk.dev)*'
+            ].join('\n');
+
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: prNumber,
+              body: message
+            });
+            
+            console.log(`✅ Welcome comment posted to PR #${prNumber} by @${contributor}`);
