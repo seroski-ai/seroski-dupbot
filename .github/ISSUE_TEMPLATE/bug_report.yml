@@ -29,11 +29,15 @@ body:
     attributes:
       label: Environment
       placeholder: "OS, Node version, etc."
+    validations:
+      required: true
   - type: textarea
     id: logs
     attributes:
       label: Logs/Errors
       render: shell
+    validations:
+      required: true
   - type: checkboxes
     id: confirmations
     attributes:
