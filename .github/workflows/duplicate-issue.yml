@@ -50,6 +50,9 @@ jobs:
           GITHUB_REPOSITORY: ${{ github.repository }}
           PINECONE_API_KEY: ${{ secrets.PINECONE_API_KEY }}
           PINECONE_INDEX: ${{ secrets.PINECONE_INDEX }}
+          AI_VERIFICATION_ENABLED: true
+          AI_VERIFICATION_TOPK: 3
+          AI_VERIFICATION_CONFIDENCE_THRESHOLD: 0.75
         run: |
           echo "🔍 Checking issue #$ISSUE_NUMBER for duplicates..."
           echo "📊 Similarity threshold: $SIMILARITY_THRESHOLD"
