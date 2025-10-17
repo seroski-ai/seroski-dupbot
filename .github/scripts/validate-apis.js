@@ -1,10 +1,8 @@
 import { Pinecone } from "@pinecone-database/pinecone";
 import { Octokit } from "@octokit/rest";
 import fetch from "node-fetch";
-import dotenv from "dotenv";
-
-// Load environment variables for local development
-dotenv.config();
+import { maybeLoadDotenv } from "./utils/env.js";
+await maybeLoadDotenv();
 
 // Validation functions
 async function validatePinecone() {

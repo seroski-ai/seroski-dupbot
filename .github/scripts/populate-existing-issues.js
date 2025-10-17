@@ -1,10 +1,9 @@
 import { Octokit } from "@octokit/rest";
 import fetch from "node-fetch";
 import { Pinecone } from "@pinecone-database/pinecone";
-import dotenv from "dotenv";
+import { maybeLoadDotenv } from "./utils/env.js";
 
-// Load environment variables
-dotenv.config();
+await maybeLoadDotenv();
 
 const octokit = new Octokit({ auth: process.env.GITHUB_TOKEN });
 const OWNER = process.env.GITHUB_REPOSITORY?.split("/")[0] || process.env.GITHUB_OWNER;
