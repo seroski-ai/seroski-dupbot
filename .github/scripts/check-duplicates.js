@@ -2,6 +2,7 @@ import { Octokit } from "@octokit/rest";
 import fetch from "node-fetch";
 import { Pinecone } from "@pinecone-database/pinecone";
 import { maybeLoadDotenv } from "./utils/env.js";
+import logger from "./utils/logger.js";
 await maybeLoadDotenv();
 
 const __maybeLoadDotenv = async () => {
@@ -39,7 +40,7 @@ async function retryApiCall(apiCall, maxRetries = 3, delay = 1000) {
     } catch (error) {
       if (i === maxRetries - 1) throw error;
       if (error.status === 429 || error.status >= 500) {
-        console.log(
+        logger.warn(
           `API call failed (attempt ${i + 1}), retrying in ${delay}ms...`
         );
         await new Promise((resolve) => setTimeout(resolve, delay));
@@ -56,7 +57,7 @@ async function safeVectorOperation(operation, fallbackMessage) {
   try {
     return await operation();
   } catch (error) {
-    console.error("❌ Vector database error:", error.message);
+    logger.error("Vector database error:", error.message);
 
     await octokit.issues.createComment({
       owner: OWNER,
@@ -133,7 +134,7 @@ async function verifyWithAI(newIssue, candidateIssue) {
 }
 
 async function run() {
-  console.log(`\n=== Checking issue #${ISSUE_NUMBER} for duplicates ===`);
+  logger.header(`\n=== Checking issue #${ISSUE_NUMBER} for duplicates ===`);
 
   const { data: newIssue } = await retryApiCall(async () => {
     return await octokit.issues.get({
@@ -144,15 +145,15 @@ async function run() {
   });
 
   if (newIssue.pull_request) {
-    console.log("⏭️ Skipping pull request - not an issue");
+    logger.info("Skipping pull request - not an issue");
     return;
   }
 
   const newText = `${newIssue.title} ${newIssue.body || ""}`.trim();
-  console.log(`Issue text: ${newText.substring(0, 100)}...`);
+  logger.log(`Issue text: ${newText.substring(0, 100)}...`);
 
   if (newText.length < 10) {
-    console.log("⚠️ Issue text too short for meaningful duplicate detection");
+    logger.warn("Issue text too short for meaningful duplicate detection");
     await octokit.issues.createComment({
       owner: OWNER,
       repo: REPO,
@@ -169,7 +170,7 @@ async function run() {
     return;
   }
 
-  console.log("Generating embedding for the new issue...");
+  logger.log("Generating embedding for the new issue...");
 
   const generateEmbedding = async (text) => {
     return await retryApiCall(async () => {
@@ -189,7 +190,7 @@ async function run() {
       const data = await response.json();
 
       if (data.error || !data.embedding || !data.embedding.values) {
-        console.error("Embedding error:", data.error || "Invalid response");
+        logger.error("Embedding error:", data.error || "Invalid response");
         return Array(1024).fill(0.01);
       }
 
@@ -205,10 +206,10 @@ async function run() {
   };
 
   const newEmbedding = await generateEmbedding(newText);
-  console.log("✅ Generated embedding for new issue");
+  logger.success("Generated embedding for new issue");
 
   const index = pinecone.Index(indexName);
-  console.log("Checking if issue already exists in vector database...");
+  logger.log("Checking if issue already exists in vector database...");
 
   let existingVectorIds = [];
   let isEditingExistingIssue = false;
@@ -229,10 +230,10 @@ async function run() {
       if (queryResponse.matches && queryResponse.matches.length > 0) {
         for (const match of queryResponse.matches) {
           existingVectorIds.push(match.id);
-          console.log(`   📌 Found existing vector via filter: ${match.id}`);
+          logger.log(`   📌 Found existing vector via filter: ${match.id}`);
         }
       } else {
-        console.log(
+        logger.log(
           "   🔄 Filter query returned no results, trying list approach..."
         );
         let paginationToken = null;
@@ -249,7 +250,7 @@ async function run() {
             for (const vector of listResponse.vectors) {
               if (vector.metadata?.issue_number === ISSUE_NUMBER) {
                 existingVectorIds.push(vector.id);
-                console.log(
+                logger.log(
                   `   📌 Found existing vector via list: ${vector.id}`
                 );
               }
@@ -261,14 +262,14 @@ async function run() {
       }
 
       isEditingExistingIssue = existingVectorIds.length > 0;
-      console.log(
+      logger.log(
         `Issue exists in DB: ${isEditingExistingIssue ? "YES" : "NO"} (${
           existingVectorIds.length
         } vectors found)`
       );
     }, "Could not check for existing issue vectors in the database.");
   } catch (error) {
-    console.error(
+    logger.error(
       "Vector database check failed, continuing with basic processing..."
     );
   }
@@ -279,7 +280,7 @@ async function run() {
 
   try {
     await safeVectorOperation(async () => {
-      console.log("Querying Pinecone for similar issues...");
+      logger.log("Querying Pinecone for similar issues...");
       const queryResponse = await index.query({
         vector: newEmbedding,
         topK: 10,
@@ -288,13 +289,13 @@ async function run() {
       });
 
       results = queryResponse.matches || [];
-      console.log(`Found ${results.length} potential matches`);
+      logger.log(`Found ${results.length} potential matches`);
 
       filteredResults = results.filter(
         (r) => r.metadata?.issue_number !== ISSUE_NUMBER
       );
 
-      console.log(
+      logger.log(
         `After filtering out current issue: ${filteredResults.length} matches`
       );
 
@@ -308,7 +309,7 @@ async function run() {
         }))
         .sort((a, b) => b.similarity - a.similarity); // Sort by highest similarity first
 
-      console.log(
+      logger.log(
         `Found ${duplicates.length} potential matches above 0.55 similarity threshold`
       );
 
@@ -318,16 +319,16 @@ async function run() {
         if (score >= 0.85) category = "🚨 HIGH DUPLICATE";
         else if (score >= 0.55) category = "🤔 POTENTIALLY RELATED";
         
-        console.log(
+        logger.log(
           `  ${index + 1}. Issue #${
             result.metadata?.issue_number || "Unknown"
           } - Score: ${score.toFixed(4)} ${category}`
         );
-        console.log(`     Title: "${result.metadata?.title || "No title"}"`);
+        logger.log(`     Title: "${result.metadata?.title || "No title"}"`);
       });
     }, "Could not query the vector database for similar issues.");
   } catch (error) {
-    console.error("Duplicate detection failed, treating as unique issue...");
+    logger.error("Duplicate detection failed, treating as unique issue...");
   }
 
   const AI_ENABLED = (process.env.AI_VERIFICATION_ENABLED || "false").toLowerCase() === "true";
@@ -417,7 +418,7 @@ async function run() {
       commentBody += `Please continue the discussion in the original issue above. If your problem is different, please open a new issue with more specific details.\n\n`;
     }
 
-    console.log(`🚨 HIGH SIMILARITY DUPLICATE detected! Similarity: ${similarityPercent}% with issue #${topMatch.number}`);
+    logger.warn(`HIGH SIMILARITY DUPLICATE detected! Similarity: ${similarityPercent}% with issue #${topMatch.number}`);
     
   } else if (mediumSimilarityDuplicates.length > 0) {
     // TIER 2: Medium similarity (0.55-0.84) - Flag as potentially related
@@ -444,7 +445,7 @@ async function run() {
     }
     commentBody += (aiNote || `This issue is not identical but may be related. A maintainer will review to determine if they should be linked or if this is indeed a separate issue.\n\n`);
     
-    console.log(`🤔 POTENTIALLY RELATED issue detected! Similarity: ${similarityPercent}% with issue #${topMatch.number}`);
+    logger.info(`POTENTIALLY RELATED issue detected! Similarity: ${similarityPercent}% with issue #${topMatch.number}`);
     
   } else {
     // TIER 3: Low similarity (< 0.55) - Treat as unique
@@ -461,15 +462,15 @@ async function run() {
       commentBody += `Your contribution helps make this project better. We appreciate you taking the time to report this! 🙏\n\n`;
     }
 
-    console.log(`✅ UNIQUE issue confirmed. No similar issues found above 0.55 threshold.`);
+    logger.success(`UNIQUE issue confirmed. No similar issues found above 0.55 threshold.`);
   }
 
   commentBody += `*This comment was generated automatically by Seroski-DupBot 🤖*\n\nCheck out the developer: [Portfolio](https://portfolio.rosk.dev)`;
 
-  console.log(`📊 Duplicate Detection Summary:`);
-  console.log(`   Action: ${duplicateAction}`);
-  console.log(`   Will auto-close: ${shouldAutoClose}`);
-  console.log(`   Will update vectors: ${shouldUpdateVector}`);
+  logger.data(`📊 Duplicate Detection Summary:`);
+  logger.data(`   Action: ${duplicateAction}`);
+  logger.data(`   Will auto-close: ${shouldAutoClose}`);
+  logger.data(`   Will update vectors: ${shouldUpdateVector}`);
 
   // Post the comment first
   await retryApiCall(async () => {
@@ -480,12 +481,12 @@ async function run() {
       body: commentBody,
     });
   });
-  console.log("Comment posted on the issue.");
+  logger.success("Comment posted on the issue.");
 
   // Handle auto-closure for high similarity duplicates (>= 0.85)
   if (shouldAutoClose && duplicateAction === "auto-close") {
     try {
-      console.log(`🔄 Auto-closing issue #${ISSUE_NUMBER} as duplicate...`);
+      logger.log(`🔄 Auto-closing issue #${ISSUE_NUMBER} as duplicate...`);
       
       // First add the duplicate label
       await retryApiCall(async () => {
@@ -497,7 +498,7 @@ async function run() {
         });
       });
       
-      console.log(`🏷️  Added 'duplicate' label to issue #${ISSUE_NUMBER}`);
+      logger.success(`Added 'duplicate' label to issue #${ISSUE_NUMBER}`);
       
       // Then close the issue with 'not_planned' state reason
       await retryApiCall(async () => {
@@ -510,10 +511,10 @@ async function run() {
         });
       });
       
-      console.log(`🔒 Issue #${ISSUE_NUMBER} has been auto-closed as duplicate`);
+      logger.success(`Issue #${ISSUE_NUMBER} has been auto-closed as duplicate`);
       
     } catch (error) {
-      console.error(`❌ Failed to auto-close issue #${ISSUE_NUMBER}:`, error.message);
+      logger.error(`Failed to auto-close issue #${ISSUE_NUMBER}:`, error.message);
       
       // Post error comment if automatic closure fails
       try {
@@ -526,13 +527,13 @@ async function run() {
           });
         });
       } catch (commentError) {
-        console.error(`❌ Failed to post error comment: ${commentError.message}`);
+        logger.error(`Failed to post error comment: ${commentError.message}`);
       }
     }
   } else if (duplicateAction === "flag-related") {
-    console.log(`🤔 Issue #${ISSUE_NUMBER} flagged as potentially related - no auto-action taken`);
+    logger.info(`Issue #${ISSUE_NUMBER} flagged as potentially related - no auto-action taken`);
   } else if (duplicateAction === "unique") {
-    console.log(`✅ Issue #${ISSUE_NUMBER} confirmed as unique - will process normally`);
+    logger.success(`Issue #${ISSUE_NUMBER} confirmed as unique - will process normally`);
   }
 
   // Continue with vector database updates only for unique issues
@@ -540,11 +541,11 @@ async function run() {
     try {
       await safeVectorOperation(async () => {
         if (isEditingExistingIssue) {
-          console.log("Updating existing issue vectors in Pinecone...");
+          logger.log("Updating existing issue vectors in Pinecone...");
 
           if (existingVectorIds.length > 0) {
             await index.deleteMany(existingVectorIds);
-            console.log(
+            logger.log(
               `🗑️  Deleted ${existingVectorIds.length} old vector(s)`
             );
           }
@@ -565,11 +566,11 @@ async function run() {
             },
           ]);
 
-          console.log(
-            "✅ Updated issue embedding in Pinecone with new content."
+          logger.success(
+            "Updated issue embedding in Pinecone with new content."
           );
         } else {
-          console.log("Adding new issue embedding to Pinecone...");
+          logger.log("Adding new issue embedding to Pinecone...");
 
           const vectorId = `issue-${ISSUE_NUMBER}-${Date.now()}`;
           await index.upsert([
@@ -586,29 +587,29 @@ async function run() {
             },
           ]);
 
-          console.log(
-            "✅ New issue embedding stored in Pinecone for future duplicate detection."
+          logger.success(
+            "New issue embedding stored in Pinecone for future duplicate detection."
           );
         }
       }, "Could not update the vector database.");
     } catch (error) {
-      console.error(
+      logger.error(
         "Failed to update vector database, but issue processing completed."
       );
     }
   } else {
     if (duplicateAction === "auto-close") {
-      console.log("⏭️  Skipped adding to Pinecone due to high-confidence duplicate detection and auto-closure.");
+      logger.info("Skipped adding to Pinecone due to high-confidence duplicate detection and auto-closure.");
     } else if (duplicateAction === "flag-related") {
-      console.log("✅ Added to Pinecone despite potential relation - issue treated as separate.");
+      logger.success("Added to Pinecone despite potential relation - issue treated as separate.");
     } else if (isEditingExistingIssue) {
-      console.log("⚠️  Keeping existing vectors unchanged due to similarity detected after edit.");
+      logger.warn("Keeping existing vectors unchanged due to similarity detected after edit.");
     }
   }
 
-  console.log(
+  logger.header(
     `\n=== Duplicate check completed for issue #${ISSUE_NUMBER} ===\n`
   );
 }
 
-run().catch((err) => console.error(err));
+run().catch((err) => logger.error(err));
