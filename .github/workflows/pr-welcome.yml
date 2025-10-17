@@ -71,5 +71,5 @@ jobs:
               console.log(`✅ Welcome comment posted to PR #${prNumber} by @${contributor}`);
             } catch (error) {
               console.error(`❌ Error posting welcome comment: ${error.message}`);
-              core.setFailed(error.message);
+              throw error;
             }
