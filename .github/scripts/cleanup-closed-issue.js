@@ -1,5 +1,6 @@
 import { Octokit } from "@octokit/rest";
 import { Pinecone } from "@pinecone-database/pinecone";
+import logger from "./utils/logger.js";
 
 const octokit = new Octokit({ auth: process.env.GITHUB_TOKEN });
 const OWNER =
@@ -23,7 +24,7 @@ async function retryApiCall(apiCall, maxRetries = 3, delay = 1000) {
     } catch (error) {
       if (i === maxRetries - 1) throw error;
       if (error.status === 429 || error.status >= 500) {
-        console.log(
+        logger.warn(
           `API call failed (attempt ${i + 1}), retrying in ${delay}ms...`
         );
         await new Promise((resolve) => setTimeout(resolve, delay));
@@ -36,22 +37,22 @@ async function retryApiCall(apiCall, maxRetries = 3, delay = 1000) {
 }
 
 async function cleanupClosedIssue() {
-  console.log(
+  logger.header(
     `\n=== Cleaning up closed issue #${ISSUE_NUMBER} from vector database ===`
   );
-  console.log(`Repository: ${OWNER}/${REPO}`);
-  console.log(`Pinecone Index: ${indexName}`);
+  logger.info(`Repository: ${OWNER}/${REPO}`);
+  logger.info(`Pinecone Index: ${indexName}`);
 
   if (!OWNER || !REPO) {
-    console.error(
-      "❌ Repository owner and name must be specified via GITHUB_REPOSITORY or GITHUB_OWNER/GITHUB_REPO environment variables"
+    logger.error(
+      "Repository owner and name must be specified via GITHUB_REPOSITORY or GITHUB_OWNER/GITHUB_REPO environment variables"
     );
     process.exit(1);
   }
 
   if (!ISSUE_NUMBER) {
-    console.error(
-      "❌ Issue number must be specified via ISSUE_NUMBER environment variable"
+    logger.error(
+      "Issue number must be specified via ISSUE_NUMBER environment variable"
     );
     process.exit(1);
   }
@@ -59,7 +60,7 @@ async function cleanupClosedIssue() {
   try {
     // Initialize Pinecone index
     const index = pinecone.Index(indexName);
-    console.log("✅ Connected to Pinecone index");
+    logger.success("Connected to Pinecone index");
 
     // Fetch the closed issue details for logging with retry logic
     const { data: closedIssue } = await retryApiCall(async () => {
@@ -72,17 +73,17 @@ async function cleanupClosedIssue() {
 
     // Skip if it's actually a pull request
     if (closedIssue.pull_request) {
-      console.log("⏭️ Skipping pull request cleanup - not an issue");
+      logger.info("⏭️ Skipping pull request cleanup - not an issue");
       return;
     }
 
-    console.log(`📄 Issue details:`);
-    console.log(`   Title: "${closedIssue.title}"`);
-    console.log(`   State: ${closedIssue.state}`);
-    console.log(`   Closed at: ${closedIssue.closed_at}`);
+    logger.log(`📄 Issue details:`);
+    logger.log(`   Title: "${closedIssue.title}"`);
+    logger.log(`   State: ${closedIssue.state}`);
+    logger.log(`   Closed at: ${closedIssue.closed_at}`);
 
     // Query Pinecone to find vectors for this issue with retry logic
-    console.log(
+    logger.info(
       `🔍 Searching for vectors related to issue #${ISSUE_NUMBER}...`
     );
 
@@ -105,11 +106,11 @@ async function cleanupClosedIssue() {
         if (queryResponse.matches && queryResponse.matches.length > 0) {
           for (const match of queryResponse.matches) {
             vectorsToDelete.push(match.id);
-            console.log(`   📌 Found vector via filter: ${match.id}`);
+            logger.log(`   📌 Found vector via filter: ${match.id}`);
           }
         } else {
           // Fallback to listing all vectors (paginated approach)
-          console.log(
+          logger.log(
             "   🔄 Filter query returned no results, trying list approach..."
           );
           let paginationToken = null;
@@ -126,7 +127,7 @@ async function cleanupClosedIssue() {
               for (const vector of listResponse.vectors) {
                 if (vector.metadata?.issue_number === ISSUE_NUMBER) {
                   vectorsToDelete.push(vector.id);
-                  console.log(`   📌 Found vector via list: ${vector.id}`);
+                  logger.log(`   📌 Found vector via list: ${vector.id}`);
                 }
               }
             }
@@ -136,18 +137,18 @@ async function cleanupClosedIssue() {
         }
       });
     } catch (error) {
-      console.error(
-        "❌ Failed to search vectors from Pinecone:",
+      logger.error(
+        "Failed to search vectors from Pinecone:",
         error.message
       );
       throw error;
     }
 
-    console.log(`Found ${vectorsToDelete.length} vector(s) to delete`);
+    logger.data(`Found ${vectorsToDelete.length} vector(s) to delete`);
 
     if (vectorsToDelete.length === 0) {
-      console.log(
-        `ℹ️  No vectors found for issue #${ISSUE_NUMBER}. It may have been a duplicate issue that was never added to the vector database.`
+      logger.info(
+        `No vectors found for issue #${ISSUE_NUMBER}. It may have been a duplicate issue that was never added to the vector database.`
       );
 
       // Still post a cleanup confirmation comment with retry logic
@@ -165,12 +166,12 @@ async function cleanupClosedIssue() {
         });
       });
 
-      console.log("✅ Cleanup confirmation comment posted");
+      logger.success("Cleanup confirmation comment posted");
       return;
     }
 
     // Delete the vectors from Pinecone with retry logic
-    console.log(
+    logger.info(
       `🗑️  Deleting ${vectorsToDelete.length} vector(s) from Pinecone...`
     );
 
@@ -178,11 +179,11 @@ async function cleanupClosedIssue() {
       await retryApiCall(async () => {
         return await index.deleteMany(vectorsToDelete);
       });
-      console.log(
-        `✅ Successfully deleted ${vectorsToDelete.length} vector(s) from Pinecone`
+      logger.success(
+        `Successfully deleted ${vectorsToDelete.length} vector(s) from Pinecone`
       );
     } catch (deleteError) {
-      console.error(`❌ Error deleting vectors:`, deleteError.message);
+      logger.error(`Error deleting vectors:`, deleteError.message);
       throw deleteError;
     }
 
@@ -207,15 +208,15 @@ async function cleanupClosedIssue() {
       });
     });
 
-    console.log("✅ Cleanup confirmation comment posted on the issue");
+    logger.success("Cleanup confirmation comment posted on the issue");
 
-    console.log(`\n=== Cleanup Summary ===`);
-    console.log(`📊 Issue #${ISSUE_NUMBER}: "${closedIssue.title}"`);
-    console.log(`🗑️  Vectors deleted: ${vectorsToDelete.length}`);
-    console.log(`✅ Database cleanup completed successfully`);
-    console.log(`💬 Confirmation comment posted`);
+    logger.header(`\n=== Cleanup Summary ===`);
+    logger.data(`Issue #${ISSUE_NUMBER}: "${closedIssue.title}"`);
+    logger.data(`Vectors deleted: ${vectorsToDelete.length}`);
+    logger.success(`Database cleanup completed successfully`);
+    logger.success(`Confirmation comment posted`);
   } catch (error) {
-    console.error("❌ Error during cleanup:", error);
+    logger.error("Error during cleanup:", error);
 
     // Try to post an error comment if possible with retry logic
     try {
@@ -234,7 +235,7 @@ async function cleanupClosedIssue() {
         });
       });
     } catch (commentError) {
-      console.error("❌ Failed to post error comment:", commentError.message);
+      logger.error("Failed to post error comment:", commentError.message);
     }
 
     process.exit(1);
@@ -244,7 +245,7 @@ async function cleanupClosedIssue() {
 // Handle command line arguments
 const args = process.argv.slice(2);
 if (args.includes("--help") || args.includes("-h")) {
-  console.log(`
+  logger.log(`
 📖 Usage: node .github/scripts/cleanup-closed-issue.js
 
 🔧 Required Environment Variables:
@@ -266,6 +267,6 @@ if (args.includes("--help") || args.includes("-h")) {
 
 // Run the cleanup script
 cleanupClosedIssue().catch((error) => {
-  console.error("💥 Cleanup script failed:", error);
+  logger.error("💥 Cleanup script failed:", error);
   process.exit(1);
 });

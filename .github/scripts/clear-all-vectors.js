@@ -1,5 +1,6 @@
 import { Pinecone } from "@pinecone-database/pinecone";
 import { maybeLoadDotenv } from "./utils/env.js";
+import logger from "./utils/logger.js";
 await maybeLoadDotenv();
 
 const pinecone = new Pinecone({
@@ -14,48 +15,48 @@ function delay(ms) {
 }
 
 async function clearAllVectors() {
-  console.log(`\n🚨 === CLEARING ALL VECTORS FROM PINECONE INDEX ===`);
-  console.log(`Pinecone Index: ${indexName}`);
-  console.log(`⚠️  WARNING: This will delete ALL vectors permanently!`);
+  logger.header(`\n🚨 === CLEARING ALL VECTORS FROM PINECONE INDEX ===`);
+  logger.info(`Pinecone Index: ${indexName}`);
+  logger.warn(`WARNING: This will delete ALL vectors permanently!`);
 
   try {
     const index = pinecone.Index(indexName);
-    console.log("✅ Connected to Pinecone index");
+    logger.success("Connected to Pinecone index");
 
     // Get current stats
-    console.log("📊 Getting current index statistics...");
+    logger.info("📊 Getting current index statistics...");
     const initialStats = await index.describeIndexStats();
     const totalVectors = initialStats.totalRecordCount || 0;
     
-    console.log(`📋 Current state:`);
-    console.log(`  - Total vectors: ${totalVectors}`);
-    console.log(`  - Index dimension: ${initialStats.dimension}`);
-    console.log(`  - Index fullness: ${initialStats.indexFullness}`);
+    logger.data(`Current state:`);
+    logger.data(`  - Total vectors: ${totalVectors}`);
+    logger.data(`  - Index dimension: ${initialStats.dimension}`);
+    logger.data(`  - Index fullness: ${initialStats.indexFullness}`);
 
     if (totalVectors === 0) {
-      console.log("ℹ️  Index is already empty. Nothing to clear.");
+      logger.info("Index is already empty. Nothing to clear.");
       return;
     }
 
     // Final confirmation in logs
-    console.log(`\n🚨 PROCEEDING TO DELETE ALL ${totalVectors} VECTORS`);
-    console.log("⚠️  This action cannot be undone!");
+    logger.warn(`\n🚨 PROCEEDING TO DELETE ALL ${totalVectors} VECTORS`);
+    logger.warn("This action cannot be undone!");
 
     // Method 1: Try to delete all vectors by namespace (fastest)
     try {
-      console.log("\n🧹 Attempting to clear entire namespace...");
+      logger.log("\n🧹 Attempting to clear entire namespace...");
       await index.deleteAll();
-      console.log("✅ Successfully cleared entire namespace");
+      logger.success("Successfully cleared entire namespace");
       
       // Wait for operation to complete
       await delay(5000);
       
     } catch (deleteAllError) {
-      console.log("⚠️  deleteAll() failed, trying alternative method...");
-      console.error("Error:", deleteAllError.message);
+      logger.warn("deleteAll() failed, trying alternative method...");
+      logger.error("Error:", deleteAllError.message);
       
       // Method 2: Get all vectors and delete them in batches
-      console.log("🔍 Fetching all vectors for batch deletion...");
+      logger.log("🔍 Fetching all vectors for batch deletion...");
       
       const allVectors = await index.query({
         vector: Array(1024).fill(0.1),
@@ -65,7 +66,7 @@ async function clearAllVectors() {
       });
 
       if (allVectors.matches && allVectors.matches.length > 0) {
-        console.log(`📋 Found ${allVectors.matches.length} vectors to delete`);
+        logger.data(`Found ${allVectors.matches.length} vectors to delete`);
         
         // Delete in batches
         const batchSize = 1000;
@@ -78,40 +79,40 @@ async function clearAllVectors() {
           try {
             await index.deleteMany(batchIds);
             deleted += batch.length;
-            console.log(`  🗑️  Deleted batch: ${batch.length} vectors (total: ${deleted}/${allVectors.matches.length})`);
+            logger.log(`  🗑️  Deleted batch: ${batch.length} vectors (total: ${deleted}/${allVectors.matches.length})`);
             
             await delay(1000);
           } catch (batchError) {
-            console.error(`  ❌ Failed to delete batch:`, batchError.message);
+            logger.error(`  Failed to delete batch:`, batchError.message);
           }
         }
         
-        console.log(`✅ Batch deletion completed: ${deleted}/${allVectors.matches.length} vectors`);
+        logger.success(`Batch deletion completed: ${deleted}/${allVectors.matches.length} vectors`);
       }
     }
 
     // Verify the clearing
-    console.log("\n🔍 Verifying index is cleared...");
+    logger.info("\n🔍 Verifying index is cleared...");
     await delay(3000); // Wait for Pinecone to sync
     
     const finalStats = await index.describeIndexStats();
     const remainingVectors = finalStats.totalRecordCount || 0;
     
-    console.log(`\n📊 Final Results:`);
-    console.log(`  - Initial vectors: ${totalVectors}`);
-    console.log(`  - Remaining vectors: ${remainingVectors}`);
-    console.log(`  - Vectors cleared: ${totalVectors - remainingVectors}`);
+    logger.header(`\nFinal Results:`);
+    logger.data(`  - Initial vectors: ${totalVectors}`);
+    logger.data(`  - Remaining vectors: ${remainingVectors}`);
+    logger.data(`  - Vectors cleared: ${totalVectors - remainingVectors}`);
     
     if (remainingVectors === 0) {
-      console.log("🎉 SUCCESS: All vectors have been cleared from the index!");
-      console.log("💡 You can now repopulate with fresh data using the populate script.");
+      logger.success("SUCCESS: All vectors have been cleared from the index!");
+      logger.info("💡 You can now repopulate with fresh data using the populate script.");
     } else {
-      console.log(`⚠️  WARNING: ${remainingVectors} vectors still remain in the index.`);
-      console.log("This might be due to Pinecone sync delays. Check again in a few minutes.");
+      logger.warn(`WARNING: ${remainingVectors} vectors still remain in the index.`);
+      logger.log("This might be due to Pinecone sync delays. Check again in a few minutes.");
     }
 
   } catch (error) {
-    console.error("❌ Error during clearing:", error);
+    logger.error("Error during clearing:", error);
     process.exit(1);
   }
 }
@@ -120,7 +121,7 @@ async function clearAllVectors() {
 const args = process.argv.slice(2);
 
 if (args.includes('--help') || args.includes('-h')) {
-  console.log(`
+  logger.log(`
 📖 Usage: node .github/scripts/clear-all-vectors.js --force
 
 🔧 Required Environment Variables:
@@ -142,7 +143,7 @@ if (args.includes('--help') || args.includes('-h')) {
 
 // Safety check - require --force flag
 if (!args.includes('--force')) {
-  console.log(`
+  logger.log(`
 🚨 DANGER: This script will delete ALL vectors from your Pinecone index!
 
 📋 What it will do:
@@ -164,7 +165,7 @@ if (!args.includes('--force')) {
 }
 
 // Final confirmation before destruction
-console.log(`
+logger.warn(`
 ⚠️  FINAL WARNING ⚠️
 
 You are about to DELETE ALL VECTORS from Pinecone index: ${indexName}
@@ -179,14 +180,14 @@ Proceeding in 3 seconds...
 
 // 3 second countdown
 setTimeout(() => {
-  console.log("3...");
+  logger.log("3...");
   setTimeout(() => {
-    console.log("2...");
+    logger.log("2...");
     setTimeout(() => {
-      console.log("1...");
+      logger.log("1...");
       setTimeout(() => {
         clearAllVectors().catch(error => {
-          console.error("💥 Script failed:", error);
+          logger.error("💥 Script failed:", error);
           process.exit(1);
         });
       }, 1000);

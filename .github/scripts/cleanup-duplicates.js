@@ -1,5 +1,6 @@
 import { Pinecone } from "@pinecone-database/pinecone";
 import { maybeLoadDotenv } from "./utils/env.js";
+import logger from "./utils/logger.js";
 await maybeLoadDotenv();
 
 const pinecone = new Pinecone({
@@ -14,15 +15,15 @@ function delay(ms) {
 }
 
 async function cleanupDuplicates() {
-  console.log(`\n=== Cleaning up duplicate vectors in Pinecone ===`);
-  console.log(`Pinecone Index: ${indexName}`);
+  logger.header(`\n=== Cleaning up duplicate vectors in Pinecone ===`);
+  logger.data(`Pinecone Index: ${indexName}`);
 
   try {
     const index = pinecone.Index(indexName);
-    console.log("✅ Connected to Pinecone index");
+    logger.success("Connected to Pinecone index");
 
     // Get all vectors
-    console.log("📥 Fetching all vectors...");
+    logger.log("📥 Fetching all vectors...");
     const allVectors = await index.query({
       vector: Array(1024).fill(0.1),
       topK: 1000, // Should be enough for all vectors
@@ -31,11 +32,11 @@ async function cleanupDuplicates() {
     });
 
     if (!allVectors.matches || allVectors.matches.length === 0) {
-      console.log("ℹ️  No vectors found in the index.");
+      logger.info("No vectors found in the index.");
       return;
     }
 
-    console.log(`📊 Found ${allVectors.matches.length} total vectors`);
+    logger.data(`📊 Found ${allVectors.matches.length} total vectors`);
 
     // Group vectors by issue number
     const vectorsByIssue = new Map();
@@ -50,20 +51,20 @@ async function cleanupDuplicates() {
       }
     }
 
-    console.log(`🔍 Found vectors for ${vectorsByIssue.size} different issues`);
+    logger.data(`🔍 Found vectors for ${vectorsByIssue.size} different issues`);
 
     // Find duplicates and decide which to keep
     const vectorsToDelete = [];
     const vectorsToKeep = [];
 
     for (const [issueNumber, vectors] of vectorsByIssue) {
-      console.log(`\n📋 Issue #${issueNumber}: ${vectors.length} vector(s)`);
+      logger.log(`\n📋 Issue #${issueNumber}: ${vectors.length} vector(s)`);
       
       if (vectors.length === 1) {
-        console.log(`  ✅ No duplicates for issue #${issueNumber}`);
+        logger.success(`  No duplicates for issue #${issueNumber}`);
         vectorsToKeep.push(vectors[0]);
       } else {
-        console.log(`  🔍 Found ${vectors.length} vectors, selecting which to keep...`);
+        logger.log(`  🔍 Found ${vectors.length} vectors, selecting which to keep...`);
         
         // Sort vectors: prefer non-timestamped IDs (clean format)
         vectors.sort((a, b) => {
@@ -78,32 +79,32 @@ async function cleanupDuplicates() {
         const toKeep = vectors[0];
         const toDelete = vectors.slice(1);
         
-        console.log(`    ✅ Keeping: ${toKeep.id}`);
+        logger.success(`    Keeping: ${toKeep.id}`);
         vectorsToKeep.push(toKeep);
         
         toDelete.forEach(v => {
-          console.log(`    🗑️  Deleting: ${v.id}`);
+          logger.log(`    🗑️  Deleting: ${v.id}`);
           vectorsToDelete.push(v.id);
         });
       }
     }
 
-    console.log(`\n📊 Summary:`);
-    console.log(`  ✅ Vectors to keep: ${vectorsToKeep.length}`);
-    console.log(`  🗑️  Vectors to delete: ${vectorsToDelete.length}`);
+    logger.data(`\n📊 Summary:`);
+    logger.data(`  ✅ Vectors to keep: ${vectorsToKeep.length}`);
+    logger.data(`  🗑️  Vectors to delete: ${vectorsToDelete.length}`);
 
     if (vectorsToDelete.length === 0) {
-      console.log("🎉 No cleanup needed! All vectors are unique.");
+      logger.success("🎉 No cleanup needed! All vectors are unique.");
       return;
     }
 
     // Confirm before deletion
-    console.log(`\n⚠️  About to delete ${vectorsToDelete.length} duplicate vectors.`);
-    console.log("🔍 Vectors to delete:");
-    vectorsToDelete.forEach(id => console.log(`  - ${id}`));
+    logger.warn(`\nAbout to delete ${vectorsToDelete.length} duplicate vectors.`);
+    logger.log("🔍 Vectors to delete:");
+    vectorsToDelete.forEach(id => logger.log(`  - ${id}`));
     
     // Delete in batches
-    console.log("\n🧹 Starting cleanup...");
+    logger.log("\n🧹 Starting cleanup...");
     const batchSize = 100; // Pinecone delete limit
     let deleted = 0;
 
@@ -113,36 +114,36 @@ async function cleanupDuplicates() {
       try {
         await index.deleteMany(batch);
         deleted += batch.length;
-        console.log(`  🗑️  Deleted batch: ${batch.length} vectors (total: ${deleted}/${vectorsToDelete.length})`);
+        logger.log(`  🗑️  Deleted batch: ${batch.length} vectors (total: ${deleted}/${vectorsToDelete.length})`);
         
         // Add delay between batches
         await delay(1000);
       } catch (error) {
-        console.error(`  ❌ Failed to delete batch:`, error.message);
-        console.error(`     Batch IDs: ${batch.join(', ')}`);
+        logger.error(`  Failed to delete batch:`, error.message);
+        logger.error(`     Batch IDs: ${batch.join(', ')}`);
       }
     }
 
-    console.log(`\n🎉 Cleanup completed!`);
-    console.log(`✅ Deleted: ${deleted}/${vectorsToDelete.length} duplicate vectors`);
-    console.log(`📊 Remaining vectors: ${vectorsToKeep.length} (one per issue)`);
+    logger.success(`\n🎉 Cleanup completed!`);
+    logger.success(`Deleted: ${deleted}/${vectorsToDelete.length} duplicate vectors`);
+    logger.data(`📊 Remaining vectors: ${vectorsToKeep.length} (one per issue)`);
     
     // Verify cleanup
-    console.log("\n🔍 Verifying cleanup...");
+    logger.log("\n🔍 Verifying cleanup...");
     await delay(2000); // Wait for Pinecone to sync
     
     const finalStats = await index.describeIndexStats();
     const finalCount = finalStats.totalRecordCount || 0;
-    console.log(`📊 Final vector count: ${finalCount}`);
+    logger.data(`📊 Final vector count: ${finalCount}`);
     
     if (finalCount === vectorsToKeep.length) {
-      console.log("✅ Cleanup verification successful!");
+      logger.success("Cleanup verification successful!");
     } else {
-      console.log(`⚠️  Expected ${vectorsToKeep.length} vectors, but found ${finalCount}`);
+      logger.warn(`Expected ${vectorsToKeep.length} vectors, but found ${finalCount}`);
     }
 
   } catch (error) {
-    console.error("❌ Error during cleanup:", error);
+    logger.error("Error during cleanup:", error);
     process.exit(1);
   }
 }
@@ -150,7 +151,7 @@ async function cleanupDuplicates() {
 // Handle command line arguments
 const args = process.argv.slice(2);
 if (args.includes('--help') || args.includes('-h')) {
-  console.log(`
+  logger.info(`
 📖 Usage: node .github/scripts/cleanup-duplicates.js
 
 🔧 Required Environment Variables:
@@ -170,8 +171,8 @@ if (args.includes('--help') || args.includes('-h')) {
 
 // Confirmation prompt for safety
 if (!args.includes('--force')) {
-  console.log(`
-⚠️  WARNING: This script will delete duplicate vectors from your Pinecone index!
+  logger.warn(`
+WARNING: This script will delete duplicate vectors from your Pinecone index!
 
 📋 What it will do:
   • Find all vectors with the same issue_number
@@ -188,6 +189,6 @@ To see help: node .github/scripts/cleanup-duplicates.js --help
 
 // Run the cleanup
 cleanupDuplicates().catch(error => {
-  console.error("💥 Script failed:", error);
+  logger.error("💥 Script failed:", error);
   process.exit(1);
 });
