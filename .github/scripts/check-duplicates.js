@@ -85,9 +85,12 @@ async function verifyWithAI(newIssue, candidateIssue) {
   const truncate = (s) => (s && s.length > 4000 ? s.slice(0, 4000) : s || "");
   const prompt = `You are an assistant that determines if two GitHub issues describe the same underlying problem. Only return valid JSON matching the schema and nothing else.\n\nSchema:\n{\n  "is_duplicate": boolean,\n  "confidence": number,\n  "reason": "string"\n}\n\nGuidelines:\n- Ignore superficial word overlap; focus on behavior, repro steps, expected vs actual.\n- If uncertain or details are insufficient, set is_duplicate=false and confidence<=0.5.\n\nIssue A:\nTitle: ${aTitle}\nBody:\n${truncate(aBody)}\n\nIssue B:\nTitle: ${bTitle}\nBody:\n${truncate(bBody)}\n`;
   try {
-    const resp = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${process.env.GEMINI_API_KEY}`, {
+    const resp = await fetch("https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        "x-goog-api-key": process.env.GEMINI_API_KEY
+      },
       body: JSON.stringify({
         contents: [
           { role: "user", parts: [{ text: prompt }] }
