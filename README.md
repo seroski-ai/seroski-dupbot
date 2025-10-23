@@ -5,6 +5,7 @@
 [![GitHub Actions](https://img.shields.io/github/actions/workflow/status/seroski-ai/seroski-dupbot/duplicate-issue.yml?branch=main)](https://github.com/seroski-ai/seroski-dupbot/actions)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Code of Conduct](https://img.shields.io/badge/code%20of%20conduct-contributor%20covenant-blue.svg)](./CODE_OF_CONDUCT.md)
+[![Security Policy](https://img.shields.io/badge/security-policy-red.svg)](./SECURITY.md)
 
 ## 🎯 What It Does
 
@@ -103,6 +104,17 @@ npm run check-duplicates
 ## 🛠️ Advanced Usage
 
 For detailed workflow management and troubleshooting, see [WORKFLOWS.md](./WORKFLOWS.md)
+
+## 🔒 Security
+
+Security is a top priority. Please review our [Security Policy](./SECURITY.md) for:
+
+- **Vulnerability Reporting**: How to responsibly report security issues
+- **API Key Safety**: Best practices for handling secrets and credentials
+- **Response Timeline**: What to expect when reporting vulnerabilities
+- **Security Checklist**: Guidelines for safe deployment
+
+**Found a security issue?** Please report it privately to arun.ofc09@gmail.com or jasonwilliam9894@gmail.com
 
 ## 🆘 Troubleshooting
 
