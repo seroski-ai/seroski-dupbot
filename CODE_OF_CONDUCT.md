@@ -29,7 +29,7 @@ If you believe someone is violating this Code of Conduct, please report it to th
 
 You may contact either address for private reports.
 
-Include as much information as possible (what happened, when, links, screenshots). Reports will be handled promptly and with respect for the reporter's privacy. If you prefer, you may open a private GitHub issue or contact a maintainer off-band.
+Include as much information as possible (what happened, when, links, screenshots). Reports will be handled promptly and with respect for the reporter's privacy. If you prefer, you may open a private GitHub issue or contact a maintainer out-of-band.
 
 ### Enforcement
 
