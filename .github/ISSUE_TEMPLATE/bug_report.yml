@@ -38,10 +38,3 @@ body:
       render: shell
     validations:
       required: true
-  - type: checkboxes
-    id: confirmations
-    attributes:
-      label: Confirmations
-      options:
-        - label: I searched existing issues and didn’t find a match
-          required: true

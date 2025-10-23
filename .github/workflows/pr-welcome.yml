@@ -4,65 +4,72 @@ on:
   pull_request_target:
     types: [opened]
 
-permissions:
-  issues: write
-
 jobs:
-  welcome:
+  greeting:
     runs-on: ubuntu-latest
-    
+    permissions:
+      pull-requests: write
+      issues: write
     steps:
-      - name: Post welcome comment
+      - name: Add welcome comment
         uses: actions/github-script@v7
         with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
+          github-token: ${{ secrets.PAT_DUPBOT }}
           script: |
-            const contributor = context.payload.pull_request.user.login;
-            const prNumber = context.payload.pull_request.number;
-            const repoName = context.repo.repo;
-            const owner = context.repo.owner;
-            
-            const message = [
-              '🎉 **Thank You for Your Contribution!** 🎉',
-              '',
-              `@${contributor}, thank you for taking the time to contribute to ${repoName}!`,
-              '',
-              'Your pull request has been received and will be reviewed by a maintainer soon. Here\'s what happens next:',
-              '',
-              '1. 📋 **Maintainer Review** - A project maintainer will review your changes',
-              '2. 💬 **Feedback** - We may request changes or ask questions',
-              '3. ✅ **Approval & Merge** - Once approved, your PR will be merged',
-              '',
-              '📚 **Need Help?**',
-              `- Check our [Contributing Guide](https://github.com/${owner}/${repoName}/blob/HEAD/CONTRIBUTING.md) for guidelines`,
-              '- Feel free to ask questions in the PR comments',
-              `- Review our [Workflows Documentation](https://github.com/${owner}/${repoName}/blob/HEAD/WORKFLOWS.md) to understand our processes`,
-              '',
-              'Thank you for making this project better! 🚀',
-              '',
-              '---',
-              '*This comment was generated automatically by Seroski-DupBot 🤖*',
-              '*Check out the developer: [Portfolio](https://portfolio.rosk.dev)*'
-            ].join('\n');
+            try {
+              const contributor = context.payload.pull_request.user.login;
+              const prNumber = context.payload.pull_request.number;
+              const repoName = context.repo.repo;
+              const owner = context.repo.owner;
 
-            // Check for existing welcome comment
-            const existingComments = await github.rest.issues.listComments({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              issue_number: prNumber
-            });
+              const message = [
+                '🎉 **Thank You for Your Contribution!** 🎉',
+                '',
+                `@${contributor}, thank you for taking the time to contribute to ${repoName}!`,
+                '',
+                'Your pull request has been received and will be reviewed by a maintainer soon. Here\'s what happens next:',
+                '',
+                '1. 📋 **Maintainer Review** – A project maintainer will review your changes',
+                '2. 💬 **Feedback** – We may request changes or ask questions',
+                '3. ✅ **Approval & Merge** – Once approved, your PR will be merged',
+                '',
+                '📚 **Need Help?**',
+                `- Check our [Contributing Guide](https://github.com/${owner}/${repoName}/blob/HEAD/CONTRIBUTING.md)`,
+                `- Review our [Workflows Documentation](https://github.com/${owner}/${repoName}/blob/HEAD/WORKFLOWS.md)`,
+                '',
+                'Thank you for making this project better! 🚀',
+                '',
+                '---',
+                '*This comment was generated automatically by Seroski-DupBot 🤖*',
+                '*Check out the developer: [Portfolio](https://portfolio.rosk.dev)*'
+              ].join('\n');
 
-            const marker = '*This comment was generated automatically by Seroski-DupBot 🤖*';
-            const alreadyExists = existingComments.data.some(comment => comment.body && comment.body.includes(marker));
+              // Check for existing welcome comment to avoid duplicates
+              const existingComments = await github.rest.issues.listComments({
+                owner,
+                repo: repoName,
+                issue_number: prNumber
+              });
 
-            if (alreadyExists) {
-              console.log(`⚠️ Welcome comment already exists on PR #${prNumber}, skipping.`);
-            } else {
+              const marker = '*This comment was generated automatically by Seroski-DupBot 🤖*';
+              const alreadyExists = existingComments.data.some(
+                comment => comment.body && comment.body.includes(marker)
+              );
+
+              if (alreadyExists) {
+                console.log(`⚠️ Welcome comment already exists on PR #${prNumber}, skipping.`);
+                return;
+              }
+
               await github.rest.issues.createComment({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
+                owner,
+                repo: repoName,
                 issue_number: prNumber,
                 body: message
               });
+
               console.log(`✅ Welcome comment posted to PR #${prNumber} by @${contributor}`);
+            } catch (error) {
+              console.error(`❌ Error posting welcome comment: ${error.message}`);
+              throw error;
             }
