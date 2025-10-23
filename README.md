@@ -4,6 +4,7 @@
 
 [![GitHub Actions](https://img.shields.io/github/actions/workflow/status/seroski-ai/seroski-dupbot/duplicate-issue.yml?branch=main)](https://github.com/seroski-ai/seroski-dupbot/actions)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Code of Conduct](https://img.shields.io/badge/code%20of%20conduct-contributor%20covenant-blue.svg)](./CODE_OF_CONDUCT.md)
 
 ## 🎯 What It Does
 
