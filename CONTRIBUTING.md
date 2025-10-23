@@ -23,6 +23,8 @@ By participating in this project, you agree to maintain a respectful and inclusi
 - Focus on constructive feedback
 - Respect differing opinions and experiences
 
+Please also read our full Code of Conduct: [CODE_OF_CONDUCT.md](./CODE_OF_CONDUCT.md)
+
 ## 🚀 Getting Started
 
 ### Prerequisites
